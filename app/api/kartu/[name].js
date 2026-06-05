@@ -41,9 +41,14 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: `${filename} not found in Drive folder` })
     }
 
-    // Cache for 5 minutes — short enough to pick up Drive updates quickly
+    // Proxy the image directly to avoid CORS issues with <img> tags
+    const imgResp = await fetch(`https://drive.google.com/uc?export=view&id=${file.id}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    })
+    res.setHeader('Content-Type', imgResp.headers.get('content-type') || 'image/png')
     res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=60')
-    res.redirect(302, `https://drive.google.com/uc?export=view&id=${file.id}`)
+    const buffer = await imgResp.arrayBuffer()
+    res.status(imgResp.status).send(Buffer.from(buffer))
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

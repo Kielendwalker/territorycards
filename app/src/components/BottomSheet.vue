@@ -32,6 +32,24 @@
               Pusat: {{ area.center.lat.toFixed(6) }}, {{ area.center.lng.toFixed(6) }}
             </div>
           </div>
+
+          <div class="sheet-actions">
+            <a
+              :class="['sheet-btn', 'sheet-btn-primary', { disabled: !openMapsHref }]"
+              :href="openMapsHref || '#'"
+              :aria-disabled="!openMapsHref"
+              target="_blank"
+              rel="noopener"
+            >Buka My Maps</a>
+            <a
+              :class="['sheet-btn', 'sheet-btn-secondary', { disabled: !directionsHref }]"
+              :href="directionsHref || '#'"
+              :aria-disabled="!directionsHref"
+              target="_blank"
+              rel="noopener"
+              @click.prevent="emit('directions', $event)"
+            >Arah ke sini</a>
+          </div>
         </div>
 
       </div>
@@ -45,10 +63,12 @@ import { ref, watch } from 'vue'
 const props = defineProps({
   area: { type: Object, default: null },
   imageUrl: { type: String, default: '' },
-  show: { type: Boolean, default: false }
+  show: { type: Boolean, default: false },
+  openMapsHref: { type: String, default: '' },
+  directionsHref: { type: String, default: '' }
 })
 
-defineEmits(['close'])
+const emit = defineEmits(['close', 'directions'])
 
 const imgError = ref(false)
 watch(() => props.imageUrl, () => { imgError.value = false })
@@ -139,8 +159,11 @@ function onImgError() { imgError.value = true }
 
 .sheet-image {
   width: 100%;
+  max-height: 50vh;
+  max-height: 50dvh;
   display: block;
   object-fit: contain;
+  object-position: top;
 }
 
 .sheet-image-placeholder {
@@ -178,6 +201,53 @@ function onImgError() { imgError.value = true }
   margin-top: 8px;
   color: #435067;
   font-size: 13px;
+}
+
+.sheet-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 14px;
+  padding-bottom: 4px;
+}
+
+.sheet-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border-radius: 8px;
+  font: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  text-decoration: none;
+  cursor: pointer;
+  text-align: center;
+}
+
+.sheet-btn-primary {
+  background: #09684f;
+  color: #ffffff;
+}
+
+.sheet-btn-primary:hover {
+  background: #07563f;
+}
+
+.sheet-btn-secondary {
+  background: #2457c5;
+  color: #ffffff;
+}
+
+.sheet-btn-secondary:hover {
+  background: #1e49a6;
+}
+
+.sheet-btn.disabled {
+  background: #dce2ea;
+  color: #697489;
+  cursor: default;
+  pointer-events: none;
 }
 
 /* Transition */

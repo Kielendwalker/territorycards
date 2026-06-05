@@ -68,7 +68,10 @@
       :area="selectedArea"
       :imageUrl="selectedArea ? getCardImageUrl(selectedArea.name) : ''"
       :show="showBottomSheet"
+      :openMapsHref="openMapsHref"
+      :directionsHref="directionsHref"
       @close="showBottomSheet = false"
+      @directions="onDirectionsClick"
     />
   </div>
 </template>

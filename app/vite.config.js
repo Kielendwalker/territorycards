@@ -42,9 +42,15 @@ export default defineConfig(({ mode }) => {
                 return
               }
 
-              res.statusCode = 302
-              res.setHeader('Location', `https://drive.google.com/uc?export=view&id=${file.id}`)
-              res.end()
+              // Proxy the image directly to avoid CORS issues with <img> tags
+              const imgResp = await fetch(`https://drive.google.com/uc?export=view&id=${file.id}`, {
+                headers: { 'User-Agent': 'Mozilla/5.0' }
+              })
+              res.statusCode = imgResp.status
+              res.setHeader('Content-Type', imgResp.headers.get('content-type') || 'image/png')
+              res.setHeader('Cache-Control', 's-maxage=300')
+              const buffer = await imgResp.arrayBuffer()
+              res.end(Buffer.from(buffer))
             } catch (err) {
               res.statusCode = 500
               res.end(JSON.stringify({ error: err.message }))
