@@ -33,12 +33,63 @@ body {
   height: 100%;
 }
 
-.map-shell {
-  position: relative;
-  width: 100%;
+/* ── Top Navigation ─────────────────────────────────── */
+.app-root {
+  display: flex;
+  flex-direction: column;
   height: 100vh;
   height: 100dvh;
-  min-height: min(620px, 100dvh);
+}
+
+.top-nav {
+  display: flex;
+  flex-shrink: 0;
+  height: 48px;
+  background: #ffffff;
+  border-bottom: 1px solid var(--line);
+  box-shadow: 0 1px 4px rgba(22, 32, 51, 0.08);
+  z-index: 100;
+}
+
+.nav-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.nav-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.nav-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.gallery-tab {
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Map Shell ───────────────────────────────────────── */
+.map-shell {
+  flex: 1;
+  position: relative;
+  width: 100%;
+  min-height: 0;
   background: #dbe4e8;
 }
 

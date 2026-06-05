@@ -14,10 +14,15 @@
         <!-- Scrollable body -->
         <div class="sheet-body">
           <div class="sheet-image-wrap" v-if="imageUrl && !imgError">
+            <div v-if="!imgLoaded" class="sheet-img-loading">
+              <div class="sheet-spinner"></div>
+            </div>
             <img
               :src="imageUrl"
               :alt="area ? 'Kartu daerah ' + area.name : 'Kartu daerah'"
               class="sheet-image"
+              :class="{ hidden: !imgLoaded }"
+              @load="imgLoaded = true"
               @error="onImgError"
             />
           </div>
@@ -34,13 +39,11 @@
           </div>
 
           <div class="sheet-actions">
-            <a
-              :class="['sheet-btn', 'sheet-btn-primary', { disabled: !openMapsHref }]"
-              :href="openMapsHref || '#'"
-              :aria-disabled="!openMapsHref"
-              target="_blank"
-              rel="noopener"
-            >Buka My Maps</a>
+            <button
+              class="sheet-btn sheet-btn-primary"
+              :disabled="!area"
+              @click="emit('detail-peta', area)"
+            >Detail Peta</button>
             <a
               :class="['sheet-btn', 'sheet-btn-secondary', { disabled: !directionsHref }]"
               :href="directionsHref || '#'"
@@ -64,14 +67,18 @@ const props = defineProps({
   area: { type: Object, default: null },
   imageUrl: { type: String, default: '' },
   show: { type: Boolean, default: false },
-  openMapsHref: { type: String, default: '' },
   directionsHref: { type: String, default: '' }
 })
 
-const emit = defineEmits(['close', 'directions'])
+const emit = defineEmits(['close', 'directions', 'detail-peta'])
 
 const imgError = ref(false)
-watch(() => props.imageUrl, () => { imgError.value = false })
+const imgLoaded = ref(false)
+
+watch(() => props.imageUrl, () => {
+  imgError.value = false
+  imgLoaded.value = false
+})
 
 function onImgError() { imgError.value = true }
 </script>
@@ -150,11 +157,36 @@ function onImgError() { imgError.value = true }
 }
 
 .sheet-image-wrap {
+  position: relative;
   width: 100%;
   border-radius: 8px;
   overflow: hidden;
   background: #f0f4f8;
   margin-bottom: 12px;
+  min-height: 120px;
+}
+
+.sheet-img-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0f4f8;
+  z-index: 1;
+}
+
+.sheet-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #d7dde8;
+  border-top-color: #09684f;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .sheet-image {
@@ -164,6 +196,10 @@ function onImgError() { imgError.value = true }
   display: block;
   object-fit: contain;
   object-position: top;
+}
+
+.sheet-image.hidden {
+  opacity: 0;
 }
 
 .sheet-image-placeholder {

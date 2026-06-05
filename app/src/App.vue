@@ -1,5 +1,35 @@
 <template>
-  <div :class="['map-shell', { 'has-selection': hasSelection, 'segment-view': isSegmentView }]">
+  <div class="app-root">
+
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+      <button
+        :class="['nav-tab', { active: currentTab === 'map' }]"
+        @click="currentTab = 'map'"
+      >
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="3,6 9,3 15,6 21,3 21,18 15,21 9,18 3,21"/>
+          <line x1="9" y1="3" x2="9" y2="18"/>
+          <line x1="15" y1="6" x2="15" y2="21"/>
+        </svg>
+        Peta
+      </button>
+      <button
+        :class="['nav-tab', { active: currentTab === 'gallery' }]"
+        @click="currentTab = 'gallery'"
+      >
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7" rx="1"/>
+          <rect x="14" y="3" width="7" height="7" rx="1"/>
+          <rect x="3" y="14" width="7" height="7" rx="1"/>
+          <rect x="14" y="14" width="7" height="7" rx="1"/>
+        </svg>
+        Kartu
+      </button>
+    </nav>
+
+    <!-- Map Tab -->
+  <div v-show="currentTab === 'map'" :class="['map-shell', { 'has-selection': hasSelection, 'segment-view': isSegmentView }]">
     <div id="map" aria-label="Peta daerah Srengseng"></div>
 
     <section class="panel" aria-label="Pencarian daerah">
@@ -64,24 +94,34 @@
       </div>
     </section>
 
+  </div>
+
+    <!-- Gallery Tab -->
+    <div v-show="currentTab === 'gallery'" class="gallery-tab">
+      <CardGallery @open="openFromGallery" />
+    </div>
+
+    <!-- BottomSheet is shared across both tabs -->
     <BottomSheet
       :area="selectedArea"
       :imageUrl="selectedArea ? getCardImageUrl(selectedArea.name) : ''"
       :show="showBottomSheet"
-      :openMapsHref="openMapsHref"
       :directionsHref="directionsHref"
       @close="showBottomSheet = false"
       @directions="onDirectionsClick"
+      @detail-peta="onDetailPeta"
     />
+
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import L from 'leaflet'
 import { AREA_DATA } from './data/areaData.js'
 import { SEGMENTS } from './data/segments.js'
 import BottomSheet from './components/BottomSheet.vue'
+import CardGallery from './components/CardGallery.vue'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const MY_MAPS_ID = '1kw_PQANcUNdFzUloV8QbRUCjuDK83LM'
@@ -99,6 +139,7 @@ const hasSelection = ref(false)
 const isSegmentView = ref(false)
 const selectedArea = ref(null)
 const showBottomSheet = ref(false)
+const currentTab = ref('map')
 
 // ─── Map state (non-reactive, Leaflet handles these) ──────────────────────────
 let map = null
@@ -408,6 +449,23 @@ function showArea(inputValue) {
       animate: true,
     })
   }
+}
+
+function onDetailPeta(area) {
+  // Close bottom sheet first
+  showBottomSheet.value = false
+  // Switch to map tab
+  currentTab.value = 'map'
+  // After next tick (so map is visible), trigger showArea
+  nextTick(() => {
+    showArea(area.name)
+  })
+}
+
+function openFromGallery(area) {
+  selectedArea.value = area
+  setActions(area.center, area)
+  showBottomSheet.value = true
 }
 
 function onSearch() {
