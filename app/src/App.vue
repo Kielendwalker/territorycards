@@ -104,7 +104,6 @@
     <!-- BottomSheet is shared across both tabs -->
     <BottomSheet
       :area="selectedArea"
-      :imageUrl="selectedArea ? getCardImageUrl(selectedArea.name) : ''"
       :show="showBottomSheet"
       :directionsHref="directionsHref"
       @close="showBottomSheet = false"

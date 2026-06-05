@@ -8,19 +8,13 @@
         @click="$emit('open', area)"
       >
         <div class="card-img-wrap">
-          <!-- Skeleton shown while loading or retrying -->
-          <div v-if="statusMap[area.name] === 'loading'" class="card-skeleton"></div>
-          <!-- Error state with retry button -->
-          <div v-else-if="statusMap[area.name] === 'error'" class="card-error">
-            <button
-              class="retry-btn"
-              @click.stop="loadImage(area.name)"
-            >↺ Coba lagi</button>
+          <div v-if="imageStatus[area.name] !== 'loaded' && imageStatus[area.name] !== 'error'" class="card-skeleton"></div>
+          <div v-else-if="imageStatus[area.name] === 'error'" class="card-error">
+            <button class="retry-btn" @click.stop="loadImage(area.name)">↺ Coba lagi</button>
           </div>
-          <!-- Image shown on success -->
           <img
-            v-else-if="statusMap[area.name] === 'loaded'"
-            :src="srcMap[area.name]"
+            v-else
+            :src="imageSrc[area.name]"
             :alt="`Kartu daerah ${area.name}`"
             class="card-img"
           />
@@ -32,12 +26,11 @@
 </template>
 
 <script setup>
-import { reactive, onMounted } from 'vue'
 import { AREA_DATA } from '../data/areaData.js'
+import { imageStatus, imageSrc, loadImage } from '../utils/imageCache.js'
 
 defineEmits(['open'])
 
-// Sort: numbered areas first (001, 002...), then U areas
 const areas = [...AREA_DATA].sort((a, b) => {
   const aIsU = a.name.startsWith('U')
   const bIsU = b.name.startsWith('U')
@@ -46,49 +39,8 @@ const areas = [...AREA_DATA].sort((a, b) => {
   return a.name.localeCompare(b.name, 'id', { numeric: true })
 })
 
-// statusMap[name]: 'loading' | 'loaded' | 'error'
-const statusMap = reactive({})
-// srcMap[name]: blob URL string
-const srcMap = reactive({})
-
-const MAX_RETRIES = 3
-const RETRY_DELAY_MS = 1500
-
-async function loadImage(name) {
-  statusMap[name] = 'loading'
-
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    try {
-      const res = await fetch(`/api/kartu/${name}`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const blob = await res.blob()
-      srcMap[name] = URL.createObjectURL(blob)
-      statusMap[name] = 'loaded'
-      return
-    } catch {
-      if (attempt < MAX_RETRIES - 1) {
-        // Wait before next retry, keeping skeleton visible
-        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
-      }
-    }
-  }
-
-  // All retries exhausted
-  statusMap[name] = 'error'
-}
-
-onMounted(async () => {
-  const BATCH_SIZE = 6
-  const BATCH_DELAY_MS = 100
-
-  for (let i = 0; i < areas.length; i += BATCH_SIZE) {
-    const batch = areas.slice(i, i + BATCH_SIZE)
-    await Promise.allSettled(batch.map(area => loadImage(area.name)))
-    if (i + BATCH_SIZE < areas.length) {
-      await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS))
-    }
-  }
-})
+// Kick off loading for all visible areas (browser handles lazy naturally via intersection)
+areas.forEach(area => loadImage(area.name))
 </script>
 
 <style scoped>
@@ -143,7 +95,6 @@ onMounted(async () => {
   display: block;
 }
 
-/* Shimmer skeleton */
 .card-skeleton {
   position: absolute;
   inset: 0;
@@ -178,13 +129,9 @@ onMounted(async () => {
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
 }
 
-.retry-btn:hover {
-  background: #e2e8f0;
-  border-color: #a0aec0;
-}
+.retry-btn:hover { background: #e2e8f0; }
 
 .card-label {
   padding: 6px 10px 8px;

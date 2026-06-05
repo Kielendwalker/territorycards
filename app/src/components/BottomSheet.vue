@@ -13,21 +13,19 @@
 
         <!-- Scrollable body -->
         <div class="sheet-body">
-          <div class="sheet-image-wrap" v-if="imageUrl && !imgError">
-            <div v-if="!imgLoaded" class="sheet-img-loading">
+          <div class="sheet-image-wrap" v-if="area">
+            <div v-if="imageStatus[area.name] !== 'loaded' && imageStatus[area.name] !== 'error'" class="sheet-img-loading">
               <div class="sheet-spinner"></div>
             </div>
+            <div v-else-if="imageStatus[area.name] === 'error'" class="sheet-image-placeholder">
+              <span>Gambar tidak tersedia</span>
+            </div>
             <img
-              :src="imageUrl"
-              :alt="area ? 'Kartu daerah ' + area.name : 'Kartu daerah'"
+              v-else
+              :src="imageSrc[area.name]"
+              :alt="'Kartu daerah ' + area.name"
               class="sheet-image"
-              :class="{ hidden: !imgLoaded }"
-              @load="imgLoaded = true"
-              @error="onImgError"
             />
-          </div>
-          <div class="sheet-image-placeholder" v-else-if="imgError">
-            <span>Gambar tidak tersedia</span>
           </div>
           <div class="sheet-info">
             <div class="sheet-area-name" v-if="area">Daerah {{ area.name }}</div>
@@ -61,26 +59,21 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { watch } from 'vue'
+import { imageStatus, imageSrc, loadImage } from '../utils/imageCache.js'
 
 const props = defineProps({
   area: { type: Object, default: null },
-  imageUrl: { type: String, default: '' },
   show: { type: Boolean, default: false },
   directionsHref: { type: String, default: '' }
 })
 
 const emit = defineEmits(['close', 'directions', 'detail-peta'])
 
-const imgError = ref(false)
-const imgLoaded = ref(false)
-
-watch(() => props.imageUrl, () => {
-  imgError.value = false
-  imgLoaded.value = false
-})
-
-function onImgError() { imgError.value = true }
+// When a new area is shown, trigger load if not cached yet
+watch(() => props.area, (area) => {
+  if (area) loadImage(area.name)
+}, { immediate: true })
 </script>
 
 <style scoped>
