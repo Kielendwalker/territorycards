@@ -211,12 +211,12 @@ function myMapsViewerUrl(center) {
 function mapsDirectionsUrl(destination, origin = null) {
   const params = new URLSearchParams({
     api: '1',
-    origin: origin
-      ? origin.lat.toFixed(7) + ',' + origin.lng.toFixed(7)
-      : 'Current Location',
     destination: destination.lat.toFixed(7) + ',' + destination.lng.toFixed(7),
     travelmode: 'driving',
   })
+  if (origin) {
+    params.set('origin', origin.lat.toFixed(7) + ',' + origin.lng.toFixed(7))
+  }
   return 'https://www.google.com/maps/dir/?' + params.toString()
 }
 
@@ -477,7 +477,31 @@ function onSearch() {
 function onDirectionsClick(event) {
   if (event?.preventDefault) event.preventDefault()
   if (!selectedCenter) return
-  window.open(mapsDirectionsUrl(selectedCenter), '_blank', 'noopener')
+
+  // Open blank window immediately (must be synchronous in click handler to avoid popup blocker)
+  const win = window.open('', '_blank')
+
+  if (!navigator.geolocation) {
+    win.location.href = mapsDirectionsUrl(selectedCenter)
+    return
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const origin = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+      const accuracy = Math.round(pos.coords.accuracy)
+      if (accuracy > 500) {
+        // Warn user if accuracy is poor (typical on PC/Mac without GPS)
+        setMessage(`Akurasi lokasi ±${accuracy}m (tidak akurat). Gunakan HP untuk hasil lebih baik.`)
+        setTimeout(() => setMessage(''), 5000)
+      }
+      win.location.href = mapsDirectionsUrl(selectedCenter, origin)
+    },
+    () => {
+      win.location.href = mapsDirectionsUrl(selectedCenter)
+    },
+    { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+  )
 }
 
 // ─── Leaflet init ──────────────────────────────────────────────────────────────
