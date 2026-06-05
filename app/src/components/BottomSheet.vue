@@ -38,17 +38,8 @@
           </div>
 
           <div class="sheet-actions">
-            <!-- From map: Buka My Maps. From gallery: Detail Peta -->
-            <a
-              v-if="source === 'map'"
-              :class="['sheet-btn', 'sheet-btn-primary', { disabled: !openMapsHref }]"
-              :href="openMapsHref || '#'"
-              :aria-disabled="!openMapsHref"
-              target="_blank"
-              rel="noopener"
-            >Buka My Maps</a>
             <button
-              v-else
+              v-if="source === 'gallery'"
               class="sheet-btn sheet-btn-primary"
               :disabled="!area"
               @click="emit('detail-peta', area)"
@@ -256,11 +247,14 @@ watch(() => props.area, (area) => {
 }
 
 .sheet-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
   margin-top: 14px;
   padding-bottom: 4px;
+  display: flex;
+  gap: 10px;
+}
+
+.sheet-actions .sheet-btn {
+  flex: 1;
 }
 
 .sheet-btn {

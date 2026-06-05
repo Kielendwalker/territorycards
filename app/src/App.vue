@@ -75,13 +75,6 @@
         <div class="meta">{{ areaMeta }}</div>
         <div class="actions">
           <a
-            :class="['action-link', { disabled: !openMapsHref }]"
-            :href="openMapsHref || '#'"
-            :aria-disabled="!openMapsHref ? 'true' : 'false'"
-            target="_blank"
-            rel="noopener"
-          >Buka My Maps</a>
-          <a
             :class="['action-link', 'secondary', { disabled: !directionsHref }]"
             :href="directionsHref || '#'"
             :aria-disabled="!directionsHref ? 'true' : 'false'"
@@ -123,9 +116,6 @@ import { AREA_DATA } from './data/areaData.js'
 import { SEGMENTS } from './data/segments.js'
 import BottomSheet from './components/BottomSheet.vue'
 import CardGallery from './components/CardGallery.vue'
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-const MY_MAPS_ID = '1kw_PQANcUNdFzUloV8QbRUCjuDK83LM'
 
 // ─── Reactive state ────────────────────────────────────────────────────────────
 const areaInputValue = ref('')
@@ -215,12 +205,7 @@ function setLayerVisible(layer, visible) {
 }
 
 function myMapsViewerUrl(center) {
-  const params = new URLSearchParams({
-    mid: MY_MAPS_ID,
-    ll: center.lat.toFixed(7) + ',' + center.lng.toFixed(7),
-    z: '17',
-  })
-  return 'https://www.google.com/maps/d/viewer?' + params.toString()
+  return `https://www.openstreetmap.org/?mlat=${center.lat.toFixed(7)}&mlon=${center.lng.toFixed(7)}#map=17/${center.lat.toFixed(7)}/${center.lng.toFixed(7)}`
 }
 
 function mapsDirectionsUrl(destination, origin = null) {
@@ -490,47 +475,9 @@ function onSearch() {
 }
 
 function onDirectionsClick(event) {
-  if (!directionsHref.value || !selectedCenter) {
-    event.preventDefault()
-    return
-  }
-
-  event.preventDefault()
-  const fallbackUrl = mapsDirectionsUrl(selectedCenter)
-  const routeWindow = window.open('about:blank', '_blank')
-
-  function openUrl(url) {
-    if (routeWindow) {
-      routeWindow.location.href = url
-    } else {
-      window.open(url, '_blank', 'noopener')
-    }
-  }
-
-  if (!navigator.geolocation) {
-    openUrl(fallbackUrl)
-    return
-  }
-
-  setMessage('Mengambil lokasi sekarang...')
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
-      setMessage('')
-      const origin = {
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
-      }
-      const destination = selectedRouteArea
-        ? nearestPointOnArea(selectedRouteArea, origin)
-        : selectedCenter
-      openUrl(mapsDirectionsUrl(destination, origin))
-    },
-    () => {
-      setMessage('Tidak bisa mengambil lokasi sekarang. Membuka rute biasa.')
-      openUrl(fallbackUrl)
-    },
-    { timeout: 8000 }
-  )
+  if (event?.preventDefault) event.preventDefault()
+  if (!selectedCenter) return
+  window.open(mapsDirectionsUrl(selectedCenter), '_blank', 'noopener')
 }
 
 // ─── Leaflet init ──────────────────────────────────────────────────────────────
