@@ -105,6 +105,8 @@
     <BottomSheet
       :area="selectedArea"
       :show="showBottomSheet"
+      :source="bottomSheetSource"
+      :openMapsHref="openMapsHref"
       :directionsHref="directionsHref"
       @close="showBottomSheet = false"
       @directions="onDirectionsClick"
@@ -115,7 +117,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import L from 'leaflet'
 import { AREA_DATA } from './data/areaData.js'
 import { SEGMENTS } from './data/segments.js'
@@ -138,6 +140,7 @@ const hasSelection = ref(false)
 const isSegmentView = ref(false)
 const selectedArea = ref(null)
 const showBottomSheet = ref(false)
+const bottomSheetSource = ref('map') // 'map' | 'gallery'
 const currentTab = ref('map')
 
 // ─── Map state (non-reactive, Leaflet handles these) ──────────────────────────
@@ -436,6 +439,7 @@ function showArea(inputValue) {
 
   // Show bottom sheet
   selectedArea.value = area
+  bottomSheetSource.value = 'map'
   showBottomSheet.value = true
 
   const layer = layerByName.get(area.name.toUpperCase())
@@ -461,9 +465,18 @@ function onDetailPeta(area) {
   })
 }
 
+// Re-render map when switching back to Peta tab, close bottom sheet on tab change
+watch(currentTab, (tab) => {
+  showBottomSheet.value = false
+  if (tab === 'map' && map) {
+    nextTick(() => map.invalidateSize())
+  }
+})
+
 function openFromGallery(area) {
   selectedArea.value = area
   setActions(area.center, area)
+  bottomSheetSource.value = 'gallery'
   showBottomSheet.value = true
 }
 

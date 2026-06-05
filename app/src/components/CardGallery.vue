@@ -5,12 +5,15 @@
         v-for="area in areas"
         :key="area.name"
         class="gallery-card"
+        :data-name="area.name"
         @click="$emit('open', area)"
       >
         <div class="card-img-wrap">
-          <div v-if="imageStatus[area.name] !== 'loaded' && imageStatus[area.name] !== 'error'" class="card-skeleton"></div>
-          <div v-else-if="imageStatus[area.name] === 'error'" class="card-error">
-            <button class="retry-btn" @click.stop="loadImage(area.name)">↺ Coba lagi</button>
+          <div v-if="imageStatus[area.name] !== 'loaded' && imageStatus[area.name] !== 'error'" class="card-skeleton">
+            <div class="card-spinner"></div>
+          </div>
+          <div v-else-if="imageStatus[area.name] === 'error'" class="card-skeleton">
+            <div class="card-spinner"></div>
           </div>
           <img
             v-else
@@ -26,6 +29,7 @@
 </template>
 
 <script setup>
+import { watch, onMounted, onBeforeUnmount } from 'vue'
 import { AREA_DATA } from '../data/areaData.js'
 import { imageStatus, imageSrc, loadImage } from '../utils/imageCache.js'
 
@@ -39,8 +43,44 @@ const areas = [...AREA_DATA].sort((a, b) => {
   return a.name.localeCompare(b.name, 'id', { numeric: true })
 })
 
-// Kick off loading for all visible areas (browser handles lazy naturally via intersection)
-areas.forEach(area => loadImage(area.name))
+// Track how many times each area has been retried from gallery level
+const galleryRetryCount = {}
+const MAX_GALLERY_RETRIES = 3
+
+// Watch imageStatus reactively — auto-retry on error
+watch(imageStatus, (status) => {
+  for (const name in status) {
+    if (status[name] === 'error') {
+      const count = galleryRetryCount[name] || 0
+      if (count < MAX_GALLERY_RETRIES) {
+        galleryRetryCount[name] = count + 1
+        setTimeout(() => loadImage(name, true), 3000 * (count + 1)) // backoff: 3s, 6s, 9s
+      }
+    }
+  }
+}, { deep: true })
+
+let observer = null
+
+onMounted(() => {
+  observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const name = entry.target.dataset.name
+        if (name) loadImage(name)
+        observer.unobserve(entry.target)
+      }
+    })
+  }, { rootMargin: '150px' })
+
+  document.querySelectorAll('.gallery-card[data-name]').forEach(el => {
+    observer.observe(el)
+  })
+})
+
+onBeforeUnmount(() => {
+  observer?.disconnect()
+})
 </script>
 
 <style scoped>
@@ -72,12 +112,10 @@ areas.forEach(area => loadImage(area.name))
   overflow: hidden;
   box-shadow: 0 1px 4px rgba(22, 32, 51, 0.10);
   cursor: pointer;
-  transition: transform 0.15s, box-shadow 0.15s;
+  transition: transform 0.15s;
 }
 
-.gallery-card:active {
-  transform: scale(0.97);
-}
+.gallery-card:active { transform: scale(0.97); }
 
 .card-img-wrap {
   position: relative;
@@ -98,40 +136,25 @@ areas.forEach(area => loadImage(area.name))
 .card-skeleton {
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, #edf2f7 25%, #e2e8f0 50%, #edf2f7 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.4s infinite;
-}
-
-@keyframes shimmer {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-.card-error {
-  position: absolute;
-  inset: 0;
+  background: #f0f4f8;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #edf2f7;
-  color: #9aa3b2;
-  font-size: 11px;
-  font-weight: 700;
 }
 
-.retry-btn {
-  padding: 6px 12px;
-  border: 1px solid #cbd5e0;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #4a5568;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
+.card-spinner {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 3px solid #d0e8ff;
+  border-top-color: #3b9ef5;
+  animation: spin 0.75s linear infinite;
 }
 
-.retry-btn:hover { background: #e2e8f0; }
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 
 .card-label {
   padding: 6px 10px 8px;

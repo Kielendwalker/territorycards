@@ -1,4 +1,5 @@
 <template>
+  <Teleport to="body">
   <Transition name="sheet">
     <div v-if="show" class="sheet-overlay" @click.self="$emit('close')">
       <div class="sheet-container" role="dialog" aria-modal="true" aria-label="Detail daerah">
@@ -37,7 +38,17 @@
           </div>
 
           <div class="sheet-actions">
+            <!-- From map: Buka My Maps. From gallery: Detail Peta -->
+            <a
+              v-if="source === 'map'"
+              :class="['sheet-btn', 'sheet-btn-primary', { disabled: !openMapsHref }]"
+              :href="openMapsHref || '#'"
+              :aria-disabled="!openMapsHref"
+              target="_blank"
+              rel="noopener"
+            >Buka My Maps</a>
             <button
+              v-else
               class="sheet-btn sheet-btn-primary"
               :disabled="!area"
               @click="emit('detail-peta', area)"
@@ -56,6 +67,7 @@
       </div>
     </div>
   </Transition>
+  </Teleport>
 </template>
 
 <script setup>
@@ -65,6 +77,8 @@ import { imageStatus, imageSrc, loadImage } from '../utils/imageCache.js'
 const props = defineProps({
   area: { type: Object, default: null },
   show: { type: Boolean, default: false },
+  source: { type: String, default: 'map' }, // 'map' | 'gallery'
+  openMapsHref: { type: String, default: '' },
   directionsHref: { type: String, default: '' }
 })
 
@@ -83,8 +97,11 @@ watch(() => props.area, (area) => {
 <style scoped>
 .sheet-overlay {
   position: fixed;
-  inset: 0;
-  z-index: 1000;
+  top: 48px; /* below nav bar height */
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 999;
   background: rgba(22, 32, 51, 0.5);
   display: flex;
   align-items: flex-end;
@@ -176,8 +193,8 @@ watch(() => props.area, (area) => {
 .sheet-spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid #d7dde8;
-  border-top-color: #09684f;
+  border: 3px solid #d0e8ff;
+  border-top-color: #3b9ef5;
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
@@ -205,8 +222,10 @@ watch(() => props.area, (area) => {
   border-radius: 8px;
   background: #f0f4f8;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 12px;
   margin-bottom: 12px;
   color: #5b6678;
   font-size: 14px;

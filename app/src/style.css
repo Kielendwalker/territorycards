@@ -35,24 +35,27 @@ body {
 
 /* ── Top Navigation ─────────────────────────────────── */
 .app-root {
-  display: flex;
-  flex-direction: column;
+  display: block;
   height: 100vh;
   height: 100dvh;
 }
 
 .top-nav {
-  display: flex;
-  flex-shrink: 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
   height: 48px;
+  display: flex;
   background: #ffffff;
   border-bottom: 1px solid var(--line);
   box-shadow: 0 1px 4px rgba(22, 32, 51, 0.08);
-  z-index: 100;
+  z-index: 2000;
 }
 
 .nav-tab {
   flex: 1;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -64,13 +67,27 @@ body {
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  border-bottom: 3px solid transparent;
-  transition: color 0.15s, border-color 0.15s;
+  transition: color 0.15s, background 0.15s;
 }
 
 .nav-tab.active {
   color: var(--accent);
-  border-bottom-color: var(--accent);
+  background: #e8f5ef;
+}
+
+.nav-tab::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.nav-tab.active::after {
+  background: var(--accent);
 }
 
 .nav-icon {
@@ -80,23 +97,57 @@ body {
 }
 
 .gallery-tab {
-  flex: 1;
+  position: fixed;
+  top: 48px;
+  left: 0;
+  right: 0;
+  bottom: 0;
   overflow: hidden;
 }
 
 /* ── Map Shell ───────────────────────────────────────── */
 .map-shell {
-  flex: 1;
-  position: relative;
-  width: 100%;
-  min-height: 0;
+  position: fixed;
+  top: 48px;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background: #dbe4e8;
+  overflow: hidden;
 }
 
 #map {
   position: absolute;
   inset: 0;
   z-index: 1;
+}
+
+/* Zoom controls — keep them inside safe area */
+.leaflet-bottom.leaflet-right {
+  bottom: 16px !important;
+  right: 16px !important;
+}
+
+.leaflet-control-zoom {
+  border: none !important;
+  box-shadow: 0 2px 8px rgba(22, 32, 51, 0.2) !important;
+  border-radius: 8px !important;
+  overflow: hidden;
+}
+
+.leaflet-control-zoom-in,
+.leaflet-control-zoom-out {
+  width: 36px !important;
+  height: 36px !important;
+  line-height: 36px !important;
+  font-size: 18px !important;
+  color: #162033 !important;
+  background: #ffffff !important;
+}
+
+.leaflet-control-zoom-in:hover,
+.leaflet-control-zoom-out:hover {
+  background: #f0f4f8 !important;
 }
 
 .panel {
