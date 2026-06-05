@@ -14,15 +14,15 @@
         <!-- Scrollable body -->
         <div class="sheet-body">
           <div class="sheet-image-wrap" v-if="area">
-            <div v-if="imageStatus[area.name] !== 'loaded' && imageStatus[area.name] !== 'error'" class="sheet-img-loading">
+            <div v-if="imgStatus !== 'loaded' && imgStatus !== 'error'" class="sheet-img-loading">
               <div class="sheet-spinner"></div>
             </div>
-            <div v-else-if="imageStatus[area.name] === 'error'" class="sheet-image-placeholder">
+            <div v-else-if="imgStatus === 'error'" class="sheet-image-placeholder">
               <span>Gambar tidak tersedia</span>
             </div>
             <img
               v-else
-              :src="imageSrc[area.name]"
+              :src="imgSrc"
               :alt="'Kartu daerah ' + area.name"
               class="sheet-image"
             />
@@ -59,7 +59,7 @@
 </template>
 
 <script setup>
-import { watch } from 'vue'
+import { computed, watch } from 'vue'
 import { imageStatus, imageSrc, loadImage } from '../utils/imageCache.js'
 
 const props = defineProps({
@@ -70,7 +70,11 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'directions', 'detail-peta'])
 
-// When a new area is shown, trigger load if not cached yet
+// Explicit computed refs so Vue tracks cache reactivity properly
+const imgStatus = computed(() => props.area ? imageStatus[props.area.name] : null)
+const imgSrc    = computed(() => props.area ? imageSrc[props.area.name] : '')
+
+// Trigger load when area changes
 watch(() => props.area, (area) => {
   if (area) loadImage(area.name)
 }, { immediate: true })
