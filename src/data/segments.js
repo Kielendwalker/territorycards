@@ -1,0 +1,1 @@
+export const SEGMENTS = [{"id":"kdl-1","label":"KDL 1","count":46,"color":"#f8971b"},{"id":"kdl-2","label":"KDL 2","count":47,"color":"#009d57"},{"id":"kdl-3","label":"KDL 3","count":26,"color":"#4186f0"},{"id":"kdl-4","label":"KDL 4","count":33,"color":"#a61b4a"},{"id":"umum","label":"Umum","count":3,"color":"#795548"}];

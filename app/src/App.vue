@@ -1,0 +1,511 @@
+<template>
+  <div :class="['map-shell', { 'has-selection': hasSelection, 'segment-view': isSegmentView }]">
+    <div id="map" aria-label="Peta daerah Srengseng"></div>
+
+    <section class="panel" aria-label="Pencarian daerah">
+      <form class="search-row" @submit.prevent="onSearch">
+        <label class="sr-only" for="areaInput">Nomor daerah</label>
+        <input
+          id="areaInput"
+          v-model="areaInputValue"
+          list="areaList"
+          autocomplete="off"
+          inputmode="text"
+          placeholder="Nomor daerah"
+        />
+        <datalist id="areaList">
+          <option v-for="area in sortedAreas" :key="area.name" :value="area.name" />
+        </datalist>
+        <button type="submit">Cari</button>
+      </form>
+
+      <div class="segments">
+        <button
+          type="button"
+          :class="['segment-button', { active: activeSegmentId === 'all' }]"
+          @click="showAll"
+        >
+          Semua
+        </button>
+        <button
+          v-for="segment in SEGMENTS"
+          :key="segment.id"
+          type="button"
+          :class="['segment-button', { active: activeSegmentId === segment.id }]"
+          @click="showSegment(segment.id)"
+        >
+          <span class="segment-swatch" :style="{ background: segment.color }"></span>
+          {{ segment.label }}
+        </button>
+      </div>
+
+      <div class="result">
+        <div class="area-title">{{ areaTitle }}</div>
+        <div class="area-desc">{{ areaDesc }}</div>
+        <div class="meta">{{ areaMeta }}</div>
+        <div class="actions">
+          <a
+            :class="['action-link', { disabled: !openMapsHref }]"
+            :href="openMapsHref || '#'"
+            :aria-disabled="!openMapsHref ? 'true' : 'false'"
+            target="_blank"
+            rel="noopener"
+          >Buka My Maps</a>
+          <a
+            :class="['action-link', 'secondary', { disabled: !directionsHref }]"
+            :href="directionsHref || '#'"
+            :aria-disabled="!directionsHref ? 'true' : 'false'"
+            target="_blank"
+            rel="noopener"
+            @click.prevent="onDirectionsClick"
+          >Arah ke sini</a>
+        </div>
+        <div class="message" role="status" aria-live="polite">{{ message }}</div>
+      </div>
+    </section>
+
+    <BottomSheet
+      :area="selectedArea"
+      :imageUrl="selectedArea ? getCardImageUrl(selectedArea.name) : ''"
+      :show="showBottomSheet"
+      @close="showBottomSheet = false"
+    />
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import L from 'leaflet'
+import { AREA_DATA } from './data/areaData.js'
+import { SEGMENTS } from './data/segments.js'
+import BottomSheet from './components/BottomSheet.vue'
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const MY_MAPS_ID = '1kw_PQANcUNdFzUloV8QbRUCjuDK83LM'
+
+// ─── Reactive state ────────────────────────────────────────────────────────────
+const areaInputValue = ref('')
+const areaTitle = ref('Semua Daerah')
+const areaDesc = ref('')
+const areaMeta = ref('')
+const message = ref('')
+const openMapsHref = ref('')
+const directionsHref = ref('')
+const activeSegmentId = ref('all')
+const hasSelection = ref(false)
+const isSegmentView = ref(false)
+const selectedArea = ref(null)
+const showBottomSheet = ref(false)
+
+// ─── Map state (non-reactive, Leaflet handles these) ──────────────────────────
+let map = null
+const areaByName = new Map()
+const layerByName = new Map()
+let selectedLayer = null
+let selectedMarker = null
+let selectedCenter = null
+let selectedRouteArea = null
+
+// ─── Computed ──────────────────────────────────────────────────────────────────
+const sortedAreas = computed(() =>
+  [...AREA_DATA].sort((a, b) => a.name.localeCompare(b.name, 'id', { numeric: true }))
+)
+
+// ─── Helpers ───────────────────────────────────────────────────────────────────
+function normalizeAreaNumber(value) {
+  const raw = String(value || '').trim().toUpperCase()
+  if (!raw) return ''
+
+  const compact = raw.replace(/\s+/g, '')
+  if (areaByName.has(compact)) return compact
+
+  const unitMatch = compact.match(/U\D*0*(\d+)$/)
+  if (unitMatch) {
+    const normalizedUnit = 'U' + unitMatch[1].padStart(2, '0')
+    if (areaByName.has(normalizedUnit)) return normalizedUnit
+  }
+
+  const numbers = compact.match(/\d+/g)
+  if (numbers) {
+    const last = numbers[numbers.length - 1]
+    const padded = String(Number(last)).padStart(3, '0')
+    if (areaByName.has(padded)) return padded
+    if (areaByName.has(last)) return last
+  }
+
+  return compact
+}
+
+function toLatLngs(area) {
+  return area.coords.map((ring) => ring.map(([lng, lat]) => [lat, lng]))
+}
+
+function styleForArea(area, selected = false, dimmed = false) {
+  if (selected) {
+    return {
+      color: '#d96c00',
+      fillColor: '#ffcf5a',
+      fillOpacity: 0.58,
+      opacity: 1,
+      weight: 5,
+    }
+  }
+  return {
+    color: area.stroke || area.color,
+    fillColor: area.color,
+    fillOpacity: dimmed ? 0.09 : Math.max(area.fillOpacity, 0.2),
+    opacity: dimmed ? 0.45 : 0.92,
+    weight: dimmed ? 1 : 1.5,
+  }
+}
+
+function setLayerVisible(layer, visible) {
+  const isVisible = map.hasLayer(layer)
+  if (visible && !isVisible) {
+    layer.addTo(map)
+  } else if (!visible && isVisible) {
+    layer.remove()
+  }
+}
+
+function myMapsViewerUrl(center) {
+  const params = new URLSearchParams({
+    mid: MY_MAPS_ID,
+    ll: center.lat.toFixed(7) + ',' + center.lng.toFixed(7),
+    z: '17',
+  })
+  return 'https://www.google.com/maps/d/viewer?' + params.toString()
+}
+
+function mapsDirectionsUrl(destination, origin = null) {
+  const params = new URLSearchParams({
+    api: '1',
+    origin: origin
+      ? origin.lat.toFixed(7) + ',' + origin.lng.toFixed(7)
+      : 'Current Location',
+    destination: destination.lat.toFixed(7) + ',' + destination.lng.toFixed(7),
+    travelmode: 'driving',
+  })
+  return 'https://www.google.com/maps/dir/?' + params.toString()
+}
+
+function segmentSummary() {
+  return SEGMENTS.map((s) => s.label + ': ' + s.count).join(' | ')
+}
+
+function mapPadding() {
+  const shell = document.querySelector('.map-shell').getBoundingClientRect()
+  const panel = document.querySelector('.panel').getBoundingClientRect()
+  const isBottomPanel = panel.top > shell.height / 2
+  const limitX = Math.floor(shell.width * 0.48)
+  const limitY = Math.floor(shell.height * 0.48)
+
+  if (isBottomPanel) {
+    return {
+      paddingTopLeft: [12, 12],
+      paddingBottomRight: [12, Math.min(panel.height + 24, limitY)],
+    }
+  }
+  return {
+    paddingTopLeft: [Math.min(panel.width + panel.left + 24, limitX), Math.min(panel.top + 12, limitY)],
+    paddingBottomRight: [12, 12],
+  }
+}
+
+function fitLayers(layers, maxZoom = 18) {
+  if (!layers.length) return
+  const group = L.featureGroup(layers)
+  const padding = mapPadding()
+  map.fitBounds(group.getBounds(), {
+    paddingTopLeft: padding.paddingTopLeft,
+    paddingBottomRight: padding.paddingBottomRight,
+    maxZoom,
+    animate: false,
+  })
+}
+
+function resetSelectedMarker() {
+  if (selectedMarker) {
+    selectedMarker.remove()
+    selectedMarker = null
+  }
+}
+
+function nearestPointOnArea(area, origin) {
+  if (!area || !area.coords) return selectedCenter
+
+  const latScale = 111320
+  const lngScale = Math.cos((origin.lat * Math.PI) / 180) * 111320
+  let best = null
+  let bestScore = Infinity
+
+  function toXY(point) {
+    return {
+      x: (point.lng - origin.lng) * lngScale,
+      y: (point.lat - origin.lat) * latScale,
+    }
+  }
+
+  function toLatLng(point) {
+    return {
+      lat: origin.lat + point.y / latScale,
+      lng: origin.lng + point.x / lngScale,
+    }
+  }
+
+  for (const ring of area.coords) {
+    for (let i = 0; i < ring.length; i++) {
+      const current = ring[i]
+      const next = ring[(i + 1) % ring.length]
+      const a = toXY({ lng: current[0], lat: current[1] })
+      const b = toXY({ lng: next[0], lat: next[1] })
+      const abx = b.x - a.x
+      const aby = b.y - a.y
+      const denom = abx * abx + aby * aby || 1
+      const t = Math.max(0, Math.min(1, -(a.x * abx + a.y * aby) / denom))
+      const candidate = { x: a.x + abx * t, y: a.y + aby * t }
+      const distSq = candidate.x * candidate.x + candidate.y * candidate.y
+      if (distSq < bestScore) {
+        bestScore = distSq
+        best = toLatLng(candidate)
+      }
+    }
+  }
+
+  return best || { lat: area.center.lat, lng: area.center.lng }
+}
+
+function getCardImageUrl(areaName) {
+  if (!areaName) return ''
+  return `/api/kartu/${areaName}`
+}
+
+// ─── Actions ───────────────────────────────────────────────────────────────────
+function setActions(center = null, area = null) {
+  selectedCenter = center
+  selectedRouteArea = area
+  openMapsHref.value = center ? myMapsViewerUrl(center) : ''
+  directionsHref.value = center ? mapsDirectionsUrl(center) : ''
+}
+
+function setMessage(text = '') {
+  message.value = text
+}
+
+function showAll() {
+  hasSelection.value = false
+  isSegmentView.value = false
+  selectedLayer = null
+  resetSelectedMarker()
+  setMessage()
+  setActions()
+  activeSegmentId.value = 'all'
+
+  const layers = []
+  for (const area of AREA_DATA) {
+    const layer = layerByName.get(area.name.toUpperCase())
+    if (!layer) continue
+    layer.setStyle(styleForArea(area))
+    setLayerVisible(layer, true)
+    layers.push(layer)
+  }
+
+  areaInputValue.value = ''
+  areaTitle.value = 'Semua Daerah'
+  areaDesc.value = AREA_DATA.length + ' daerah'
+  areaMeta.value = segmentSummary()
+  fitLayers(layers, 15)
+}
+
+function showSegment(segmentId) {
+  hasSelection.value = false
+  isSegmentView.value = true
+  selectedLayer = null
+  resetSelectedMarker()
+  setMessage()
+  setActions()
+  activeSegmentId.value = segmentId
+
+  const segment = SEGMENTS.find((s) => s.id === segmentId)
+  const layers = []
+
+  for (const area of AREA_DATA) {
+    const layer = layerByName.get(area.name.toUpperCase())
+    if (!layer) continue
+    const visible = area.segmentId === segmentId
+    layer.setStyle(styleForArea(area))
+    setLayerVisible(layer, visible)
+    if (visible) layers.push(layer)
+  }
+
+  areaInputValue.value = ''
+  areaTitle.value = segment?.label || 'Segmen'
+  areaDesc.value = (segment?.count || layers.length) + ' daerah'
+  areaMeta.value = ''
+  fitLayers(layers, 15)
+}
+
+function showArea(inputValue) {
+  const normalized = normalizeAreaNumber(inputValue)
+  const area = areaByName.get(normalized)
+
+  if (!area) {
+    setMessage('Daerah ' + String(inputValue || '').trim() + ' tidak ditemukan.')
+    return
+  }
+
+  hasSelection.value = true
+  isSegmentView.value = false
+  setMessage()
+  activeSegmentId.value = area.segmentId
+
+  for (const item of AREA_DATA) {
+    const layer = layerByName.get(item.name.toUpperCase())
+    if (!layer) continue
+    const isSelected = item.name === area.name
+    layer.setStyle(styleForArea(item, isSelected, !isSelected))
+    setLayerVisible(layer, true)
+    if (isSelected) {
+      selectedLayer = layer
+      selectedLayer.bringToFront()
+    }
+  }
+
+  resetSelectedMarker()
+  selectedMarker = L.circleMarker([area.center.lat, area.center.lng], {
+    radius: 6,
+    color: '#172033',
+    weight: 2,
+    fillColor: '#ffffff',
+    fillOpacity: 1,
+  }).addTo(map)
+
+  areaInputValue.value = area.name
+  areaTitle.value = 'Daerah ' + area.name
+  areaDesc.value = area.description
+  areaMeta.value =
+    area.segmentLabel +
+    ' | Pusat: ' +
+    area.center.lat.toFixed(6) +
+    ', ' +
+    area.center.lng.toFixed(6)
+  setActions(area.center, area)
+
+  // Show bottom sheet
+  selectedArea.value = area
+  showBottomSheet.value = true
+
+  const layer = layerByName.get(area.name.toUpperCase())
+  if (layer) {
+    const padding = mapPadding()
+    map.fitBounds(layer.getBounds(), {
+      paddingTopLeft: padding.paddingTopLeft,
+      paddingBottomRight: padding.paddingBottomRight,
+      maxZoom: 17,
+      animate: true,
+    })
+  }
+}
+
+function onSearch() {
+  const value = areaInputValue.value
+  if (!value.trim()) {
+    showAll()
+    return
+  }
+  showArea(value)
+}
+
+function onDirectionsClick(event) {
+  if (!directionsHref.value || !selectedCenter) {
+    event.preventDefault()
+    return
+  }
+
+  event.preventDefault()
+  const fallbackUrl = mapsDirectionsUrl(selectedCenter)
+  const routeWindow = window.open('about:blank', '_blank')
+
+  function openUrl(url) {
+    if (routeWindow) {
+      routeWindow.location.href = url
+    } else {
+      window.open(url, '_blank', 'noopener')
+    }
+  }
+
+  if (!navigator.geolocation) {
+    openUrl(fallbackUrl)
+    return
+  }
+
+  setMessage('Mengambil lokasi sekarang...')
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      setMessage('')
+      const origin = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+      }
+      const destination = selectedRouteArea
+        ? nearestPointOnArea(selectedRouteArea, origin)
+        : selectedCenter
+      openUrl(mapsDirectionsUrl(destination, origin))
+    },
+    () => {
+      setMessage('Tidak bisa mengambil lokasi sekarang. Membuka rute biasa.')
+      openUrl(fallbackUrl)
+    },
+    { timeout: 8000 }
+  )
+}
+
+// ─── Leaflet init ──────────────────────────────────────────────────────────────
+onMounted(() => {
+  // Build area lookup
+  for (const area of AREA_DATA) {
+    areaByName.set(area.name.toUpperCase(), area)
+  }
+
+  map = L.map('map', {
+    zoomControl: false,
+    scrollWheelZoom: true,
+    preferCanvas: true,
+  }).setView([-6.197, 106.762], 14)
+
+  L.control.zoom({ position: 'bottomright' }).addTo(map)
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 20,
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  }).addTo(map)
+
+  // Build polygon layers
+  const sortedForLayers = [...AREA_DATA].sort((a, b) =>
+    a.name.localeCompare(b.name, 'id', { numeric: true })
+  )
+
+  for (const area of sortedForLayers) {
+    const layer = L.polygon(toLatLngs(area), styleForArea(area))
+      .bindTooltip(area.name, {
+        permanent: true,
+        direction: 'center',
+        className: 'area-label',
+      })
+      .addTo(map)
+      .on('click', () => {
+        showArea(area.name)
+      })
+
+    layerByName.set(area.name.toUpperCase(), layer)
+  }
+
+  // Initial view
+  areaDesc.value = AREA_DATA.length + ' daerah'
+  areaMeta.value = segmentSummary()
+
+  const allLayers = [...layerByName.values()]
+  fitLayers(allLayers, 15)
+})
+</script>
