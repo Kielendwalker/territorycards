@@ -5,7 +5,7 @@
  */
 import { reactive } from 'vue'
 
-const TTL_MS            = 5 * 60 * 1000  // 5 minutes
+const TTL_MS            = 2 * 60 * 60 * 1000  // 2 hours
 const LOADING_TIMEOUT_MS = 15 * 1000      // treat load as stuck after 15 s
 
 // 'loading' | 'loaded' | 'error'
@@ -32,28 +32,32 @@ export async function loadImage(name, forceRefresh = false) {
   imageStatus[name]    = 'loading'
   loadingStarted[name] = Date.now()
 
-  const MAX_RETRIES = 5
-  const RETRY_DELAY = 2000
+  // For manual retries, enforce a minimum spinner duration so the user
+  // can see the loading state even when the fetch fails almost instantly.
+  const fetchStart   = Date.now()
+  const MIN_SPIN_MS  = forceRefresh ? 700 : 0
 
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    try {
-      const res = await fetch(`/api/kartu/${name}`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const blob = await res.blob()
-
-      if (imageSrc[name]) URL.revokeObjectURL(imageSrc[name])
-      imageSrc[name]       = URL.createObjectURL(blob)
-      imageTimestamp[name] = Date.now()
-      imageStatus[name]    = 'loaded'
-      return
-    } catch {
-      if (attempt < MAX_RETRIES - 1) {
-        await new Promise(r => setTimeout(r, RETRY_DELAY))
-      }
-    }
+  async function waitMinSpin() {
+    const elapsed = Date.now() - fetchStart
+    if (elapsed < MIN_SPIN_MS) await new Promise(r => setTimeout(r, MIN_SPIN_MS - elapsed))
   }
 
-  // All retries exhausted
+  try {
+    const res = await fetch(`/api/kartu/${name}`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const blob = await res.blob()
+
+    await waitMinSpin()
+    if (imageSrc[name]) URL.revokeObjectURL(imageSrc[name])
+    imageSrc[name]       = URL.createObjectURL(blob)
+    imageTimestamp[name] = Date.now()
+    imageStatus[name]    = 'loaded'
+    return
+  } catch {
+    // single attempt failed
+  }
+
+  await waitMinSpin()
   if (expired && imageSrc[name]) {
     imageStatus[name] = 'loaded'  // keep stale image
   } else {

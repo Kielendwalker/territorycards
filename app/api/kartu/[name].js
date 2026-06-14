@@ -24,6 +24,25 @@ export default async function handler(req, res) {
 
   const filename = name.endsWith('.png') ? name : `${name}.png`
 
+  // Direct fetch for 013 — Drive search doesn't return this file despite it existing
+  if (name === '013') {
+    try {
+      const imgResp = await fetch(
+        `https://www.googleapis.com/drive/v3/files/1NqmnAoyXy8kQfzJf-xkTt95nqnu5bTzX?alt=media&key=${apiKey}`
+      )
+      if (!imgResp.ok) {
+        const text = await imgResp.text()
+        return res.status(502).json({ error: 'Drive download error', detail: text })
+      }
+      res.setHeader('Content-Type', imgResp.headers.get('content-type') || 'image/png')
+      res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=60')
+      const buffer = await imgResp.arrayBuffer()
+      return res.status(200).send(Buffer.from(buffer))
+    } catch (err) {
+      return res.status(500).json({ error: err.message })
+    }
+  }
+
   try {
     const q = encodeURIComponent(`name='${filename}' and '${FOLDER_ID}' in parents and trashed=false`)
     const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&key=${apiKey}`
@@ -41,14 +60,18 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: `${filename} not found in Drive folder` })
     }
 
-    // Proxy the image directly to avoid CORS issues with <img> tags
-    const imgResp = await fetch(`https://drive.google.com/uc?export=view&id=${file.id}`, {
-      headers: { 'User-Agent': 'Mozilla/5.0' }
-    })
+    // Proxy via Drive API v3 — reliable, no virus-scan redirect
+    const imgResp = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${apiKey}`
+    )
+    if (!imgResp.ok) {
+      const text = await imgResp.text()
+      return res.status(502).json({ error: 'Drive download error', detail: text })
+    }
     res.setHeader('Content-Type', imgResp.headers.get('content-type') || 'image/png')
     res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=60')
     const buffer = await imgResp.arrayBuffer()
-    res.status(imgResp.status).send(Buffer.from(buffer))
+    res.status(200).send(Buffer.from(buffer))
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

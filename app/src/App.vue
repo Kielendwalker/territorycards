@@ -74,13 +74,18 @@
         <div class="area-desc">{{ areaDesc }}</div>
         <div class="meta">{{ areaMeta }}</div>
         <div class="actions">
+          <button
+            type="button"
+            :class="['action-link', { disabled: !selectedArea }]"
+            :disabled="!selectedArea"
+            @click="onPetaDaerah"
+          >Peta Daerah</button>
           <a
             :class="['action-link', 'secondary', { disabled: !directionsHref }]"
             :href="directionsHref || '#'"
             :aria-disabled="!directionsHref ? 'true' : 'false'"
             target="_blank"
             rel="noopener"
-            @click.prevent="onDirectionsClick"
           >Arah ke sini</a>
         </div>
         <div class="message" role="status" aria-live="polite">{{ message }}</div>
@@ -90,7 +95,7 @@
   </div>
 
     <!-- Gallery Tab -->
-    <div v-show="currentTab === 'gallery'" class="gallery-tab">
+    <div v-if="currentTab === 'gallery'" class="gallery-tab">
       <CardGallery @open="openFromGallery" />
     </div>
 
@@ -102,7 +107,6 @@
       :openMapsHref="openMapsHref"
       :directionsHref="directionsHref"
       @close="showBottomSheet = false"
-      @directions="onDirectionsClick"
       @detail-peta="onDetailPeta"
     />
 
@@ -422,10 +426,7 @@ function showArea(inputValue) {
     area.center.lng.toFixed(6)
   setActions(area.center, area)
 
-  // Show bottom sheet
   selectedArea.value = area
-  bottomSheetSource.value = 'map'
-  showBottomSheet.value = true
 
   const layer = layerByName.get(area.name.toUpperCase())
   if (layer) {
@@ -450,11 +451,20 @@ function onDetailPeta(area) {
   })
 }
 
+function onPetaDaerah() {
+  if (!selectedArea.value) return
+  currentTab.value = 'gallery'
+  bottomSheetSource.value = 'gallery'
+  showBottomSheet.value = true
+}
+
 // Re-render map when switching back to Peta tab, close bottom sheet on tab change
-watch(currentTab, (tab) => {
-  showBottomSheet.value = false
-  if (tab === 'map' && map) {
-    nextTick(() => map.invalidateSize())
+watch(currentTab, (newTab) => {
+  if (newTab === 'map') {
+    showBottomSheet.value = false
+  }
+  if (newTab === 'map' && map) {
+    requestAnimationFrame(() => map.invalidateSize())
   }
 })
 
@@ -511,45 +521,60 @@ onMounted(() => {
     areaByName.set(area.name.toUpperCase(), area)
   }
 
-  map = L.map('map', {
-    zoomControl: false,
-    scrollWheelZoom: true,
-    preferCanvas: true,
-  }).setView([-6.197, 106.762], 14)
+  // Keep retrying with rAF until #map has real CSS dimensions, then init Leaflet once.
+  nextTick(() => {
+    const el = document.getElementById('map')
 
-  L.control.zoom({ position: 'bottomright' }).addTo(map)
+    function doInit() {
+      if (!el || el.clientHeight < 10) {
+        requestAnimationFrame(doInit)
+        return
+      }
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 20,
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  }).addTo(map)
-
-  // Build polygon layers
-  const sortedForLayers = [...AREA_DATA].sort((a, b) =>
-    a.name.localeCompare(b.name, 'id', { numeric: true })
-  )
-
-  for (const area of sortedForLayers) {
-    const layer = L.polygon(toLatLngs(area), styleForArea(area))
-      .bindTooltip(area.name, {
-        permanent: true,
-        direction: 'center',
-        className: 'area-label',
-      })
-      .addTo(map)
-      .on('click', () => {
-        showArea(area.name)
+      map = L.map(el, {
+        zoomControl: false,
+        scrollWheelZoom: true,
+        preferCanvas: true,
       })
 
-    layerByName.set(area.name.toUpperCase(), layer)
-  }
+      L.control.zoom({ position: 'bottomright' }).addTo(map)
+      map.attributionControl.setPrefix('')
 
-  // Initial view
-  areaDesc.value = AREA_DATA.length + ' daerah'
-  areaMeta.value = segmentSummary()
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 20,
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      }).addTo(map)
 
-  const allLayers = [...layerByName.values()]
-  fitLayers(allLayers, 15)
+      // Build polygon layers
+      const sortedForLayers = [...AREA_DATA].sort((a, b) =>
+        a.name.localeCompare(b.name, 'id', { numeric: true })
+      )
+
+      for (const area of sortedForLayers) {
+        const layer = L.polygon(toLatLngs(area), styleForArea(area))
+          .bindTooltip(area.name, {
+            permanent: true,
+            direction: 'center',
+            className: 'area-label',
+          })
+          .addTo(map)
+          .on('click', () => {
+            showArea(area.name)
+          })
+
+        layerByName.set(area.name.toUpperCase(), layer)
+      }
+
+      areaDesc.value = AREA_DATA.length + ' daerah'
+      areaMeta.value = segmentSummary()
+
+      // Container has confirmed dimensions — set view directly.
+      map.invalidateSize()
+      map.setView([-6.2044, 106.7563], 14)
+    }
+
+    doInit()
+  })
 })
 </script>

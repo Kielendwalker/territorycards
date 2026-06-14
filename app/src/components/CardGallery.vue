@@ -6,14 +6,20 @@
         :key="area.name"
         class="gallery-card"
         :data-name="area.name"
-        @click="$emit('open', area)"
+        @click="onCardClick(area, $event)"
       >
         <div class="card-img-wrap">
           <div v-if="imageStatus[area.name] !== 'loaded' && imageStatus[area.name] !== 'error'" class="card-skeleton">
             <div class="card-spinner"></div>
           </div>
-          <div v-else-if="imageStatus[area.name] === 'error'" class="card-skeleton">
-            <div class="card-spinner"></div>
+          <div v-else-if="imageStatus[area.name] === 'error'" class="card-skeleton card-skeleton--error">
+            <button class="card-retry-btn" @click.stop="retryImage(area.name)" aria-label="Coba lagi">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M3.5 10A6.5 6.5 0 1 0 5 6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                <path d="M3.5 4v2.5H6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>Coba lagi</span>
+            </button>
           </div>
           <img
             v-else
@@ -29,11 +35,11 @@
 </template>
 
 <script setup>
-import { watch, onMounted, onBeforeUnmount } from 'vue'
+import { onMounted, onBeforeUnmount } from 'vue'
 import { AREA_DATA } from '../data/areaData.js'
 import { imageStatus, imageSrc, loadImage } from '../utils/imageCache.js'
 
-defineEmits(['open'])
+const emit = defineEmits(['open'])
 
 const areas = [...AREA_DATA].sort((a, b) => {
   const aIsU = a.name.startsWith('U')
@@ -43,22 +49,15 @@ const areas = [...AREA_DATA].sort((a, b) => {
   return a.name.localeCompare(b.name, 'id', { numeric: true })
 })
 
-// Track how many times each area has been retried from gallery level
-const galleryRetryCount = {}
-const MAX_GALLERY_RETRIES = 3
+function onCardClick(area, event) {
+  // Don't open bottom sheet when tapping the retry button or its error container
+  if (event.target.closest('.card-skeleton--error')) return
+  emit('open', area)
+}
 
-// Watch imageStatus reactively — auto-retry on error
-watch(imageStatus, (status) => {
-  for (const name in status) {
-    if (status[name] === 'error') {
-      const count = galleryRetryCount[name] || 0
-      if (count < MAX_GALLERY_RETRIES) {
-        galleryRetryCount[name] = count + 1
-        setTimeout(() => loadImage(name, true), 3000 * (count + 1)) // backoff: 3s, 6s, 9s
-      }
-    }
-  }
-}, { deep: true })
+function retryImage(name) {
+  loadImage(name, true)
+}
 
 let observer = null
 
@@ -155,6 +154,36 @@ onBeforeUnmount(() => {
   to { transform: rotate(360deg); }
 }
 
+
+.card-skeleton--error {
+  flex-direction: column;
+  gap: 0;
+}
+
+.card-retry-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border: 1.5px solid #3b9ef5;
+  border-radius: 8px;
+  background: #fff;
+  color: #2457c5;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.card-retry-btn:hover {
+  background: #edf4ff;
+}
+
+.card-retry-btn:active {
+  background: #dbe9ff;
+}
 
 .card-label {
   padding: 6px 10px 8px;

@@ -20,6 +20,13 @@
             </div>
             <div v-else-if="imgStatus === 'error'" class="sheet-image-placeholder">
               <span>Gambar tidak tersedia</span>
+              <button class="sheet-retry-btn" @click="loadImage(area.name, true)">
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M3.5 10A6.5 6.5 0 1 0 5 6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                  <path d="M3.5 4v2.5H6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                Coba lagi
+              </button>
             </div>
             <img
               v-else
@@ -50,7 +57,6 @@
               :aria-disabled="!directionsHref"
               target="_blank"
               rel="noopener"
-              @click.prevent="emit('directions', $event)"
             >Arah ke sini</a>
           </div>
         </div>
@@ -73,15 +79,15 @@ const props = defineProps({
   directionsHref: { type: String, default: '' }
 })
 
-const emit = defineEmits(['close', 'directions', 'detail-peta'])
+const emit = defineEmits(['close', 'detail-peta'])
 
 // Explicit computed refs so Vue tracks cache reactivity properly
 const imgStatus = computed(() => props.area ? imageStatus[props.area.name] : null)
 const imgSrc    = computed(() => props.area ? imageSrc[props.area.name] : '')
 
-// Trigger load when area changes
-watch(() => props.area, (area) => {
-  if (area) loadImage(area.name)
+// Trigger load only when sheet is visible
+watch(() => [props.area, props.show], ([area, show]) => {
+  if (area && show) loadImage(area.name)
 }, { immediate: true })
 </script>
 
@@ -220,6 +226,30 @@ watch(() => props.area, (area) => {
   margin-bottom: 12px;
   color: #5b6678;
   font-size: 14px;
+}
+
+.sheet-retry-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border: 1.5px solid #3b9ef5;
+  border-radius: 8px;
+  background: #fff;
+  color: #2457c5;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.sheet-retry-btn:hover {
+  background: #edf4ff;
+}
+
+.sheet-retry-btn:active {
+  background: #dbe9ff;
 }
 
 .sheet-info {

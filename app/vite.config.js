@@ -42,11 +42,16 @@ export default defineConfig(({ mode }) => {
                 return
               }
 
-              // Proxy the image directly to avoid CORS issues with <img> tags
-              const imgResp = await fetch(`https://drive.google.com/uc?export=view&id=${file.id}`, {
-                headers: { 'User-Agent': 'Mozilla/5.0' }
-              })
-              res.statusCode = imgResp.status
+              // Proxy via Drive API v3 — reliable, no virus-scan redirect
+              const imgResp = await fetch(
+                `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${apiKey}`
+              )
+              if (!imgResp.ok) {
+                res.statusCode = 502
+                res.end(JSON.stringify({ error: 'Drive download error', status: imgResp.status }))
+                return
+              }
+              res.statusCode = 200
               res.setHeader('Content-Type', imgResp.headers.get('content-type') || 'image/png')
               res.setHeader('Cache-Control', 's-maxage=300')
               const buffer = await imgResp.arrayBuffer()

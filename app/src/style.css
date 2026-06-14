@@ -101,7 +101,7 @@ body {
   top: 48px;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: env(safe-area-inset-bottom, 0px);
   overflow: hidden;
 }
 
@@ -111,7 +111,7 @@ body {
   top: 48px;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: env(safe-area-inset-bottom, 0px);
   background: #dbe4e8;
   overflow: hidden;
 }
@@ -122,9 +122,9 @@ body {
   z-index: 1;
 }
 
-/* Zoom controls — keep them inside safe area */
+/* Zoom controls — bottom right, map-shell already offsets safe area */
 .leaflet-bottom.leaflet-right {
-  bottom: 16px !important;
+  bottom: 20px !important;
   right: 16px !important;
 }
 
@@ -347,9 +347,6 @@ button:hover,
 }
 
 @media (max-width: 640px) {
-  .map-shell {
-    min-height: 100dvh;
-  }
 
   .panel {
     top: 8px;
