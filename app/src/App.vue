@@ -145,6 +145,8 @@ let selectedLayer = null
 let selectedMarker = null
 let selectedCenter = null
 let selectedRouteArea = null
+let locationMarker = null
+let locationAccuracyCircle = null
 
 // ─── Computed ──────────────────────────────────────────────────────────────────
 const sortedAreas = computed(() =>
@@ -177,7 +179,11 @@ function normalizeAreaNumber(value) {
 }
 
 function toLatLngs(area) {
-  return area.coords.map((ring) => ring.map(([lng, lat]) => [lat, lng]))
+  // When multiple rings exist, keep only the largest one — small rings are data artifacts
+  const rings = area.coords.length > 1
+    ? [area.coords.reduce((a, b) => a.length >= b.length ? a : b)]
+    : area.coords
+  return rings.map((ring) => ring.map(([lng, lat]) => [lat, lng]))
 }
 
 function styleForArea(area, selected = false, dimmed = false) {
@@ -407,12 +413,16 @@ function showArea(inputValue) {
   }
 
   resetSelectedMarker()
-  selectedMarker = L.circleMarker([area.center.lat, area.center.lng], {
-    radius: 6,
-    color: '#172033',
-    weight: 2,
-    fillColor: '#ffffff',
-    fillOpacity: 1,
+  const labelCenter = selectedLayer ? selectedLayer.getCenter() : area.center
+  selectedMarker = L.marker([labelCenter.lat, labelCenter.lng], {
+    icon: L.divIcon({
+      className: '',
+      html: `<div class="area-selected-label">${area.name}</div>`,
+      iconSize: [0, 0],
+      iconAnchor: [0, 0],
+    }),
+    interactive: false,
+    zIndexOffset: 500,
   }).addTo(map)
 
   areaInputValue.value = area.name
@@ -482,6 +492,50 @@ function onSearch() {
     return
   }
   showArea(value)
+}
+
+function locateMe() {
+  if (!navigator.geolocation) {
+    setMessage('Geolocation tidak didukung browser ini.')
+    setTimeout(() => setMessage(''), 3000)
+    return
+  }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const { latitude: lat, longitude: lng, accuracy } = pos.coords
+
+      if (locationMarker) { locationMarker.remove(); locationMarker = null }
+      if (locationAccuracyCircle) { locationAccuracyCircle.remove(); locationAccuracyCircle = null }
+
+      locationAccuracyCircle = L.circle([lat, lng], {
+        radius: accuracy,
+        color: '#4285f4',
+        fillColor: '#4285f4',
+        fillOpacity: 0.12,
+        weight: 1,
+        interactive: false,
+      }).addTo(map)
+
+      locationMarker = L.marker([lat, lng], {
+        icon: L.divIcon({
+          className: 'location-icon-wrapper',
+          html: '<div class="my-location-dot"></div>',
+          iconSize: [22, 22],
+          iconAnchor: [11, 11],
+        }),
+        interactive: false,
+        zIndexOffset: 1000,
+      }).addTo(map)
+
+      map.setView([lat, lng], Math.max(map.getZoom(), 16))
+    },
+    (err) => {
+      const msg = err.code === 1 ? 'Izin lokasi ditolak.' : 'Tidak dapat mendeteksi lokasi.'
+      setMessage(msg)
+      setTimeout(() => setMessage(''), 4000)
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 },
+  )
 }
 
 function onDirectionsClick(event) {
@@ -572,6 +626,9 @@ onMounted(() => {
       // Container has confirmed dimensions — set view directly.
       map.invalidateSize()
       map.setView([-6.2044, 106.7563], 14)
+
+      // Auto-locate on load (silently ignore if denied/unavailable)
+      locateMe()
     }
 
     doInit()
