@@ -171,6 +171,50 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
+.search-input-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.suggestion-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 5;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.suggestion-list li {
+  margin: 0;
+}
+
+.suggestion-list button {
+  display: block;
+  width: 100%;
+  min-height: 36px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+.suggestion-list button:hover,
+.suggestion-list button:focus {
+  background: rgba(36, 87, 197, 0.1);
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

@@ -35,17 +35,24 @@
     <section class="panel" aria-label="Pencarian daerah">
       <form class="search-row" @submit.prevent="onSearch">
         <label class="sr-only" for="areaInput">Nomor daerah</label>
-        <input
-          id="areaInput"
-          v-model="areaInputValue"
-          list="areaList"
-          autocomplete="off"
-          inputmode="text"
-          placeholder="Nomor daerah"
-        />
-        <datalist id="areaList">
-          <option v-for="area in sortedAreas" :key="area.name" :value="area.name" />
-        </datalist>
+        <div class="search-input-wrap">
+          <input
+            id="areaInput"
+            v-model="areaInputValue"
+            autocomplete="off"
+            inputmode="text"
+            placeholder="Nomor daerah"
+            @focus="showSuggestions = !!areaInputValue.trim()"
+            @input="showSuggestions = true"
+            @blur="onAreaInputBlur"
+            @keydown.escape="showSuggestions = false"
+          />
+          <ul v-if="showSuggestions && filteredAreas.length > 0" class="suggestion-list">
+            <li v-for="area in filteredAreas" :key="area.name">
+              <button type="button" @click="onSuggestionSelect(area)">{{ area.name }}</button>
+            </li>
+          </ul>
+        </div>
         <button type="submit">Cari</button>
       </form>
 
@@ -120,6 +127,7 @@ import { AREA_DATA } from './data/areaData.js'
 import { SEGMENTS } from './data/segments.js'
 import BottomSheet from './components/BottomSheet.vue'
 import CardGallery from './components/CardGallery.vue'
+import { normalizeAreaNumber, filterAreas } from './utils/areaSearch.js'
 
 // ─── Reactive state ────────────────────────────────────────────────────────────
 const areaInputValue = ref('')
@@ -136,6 +144,7 @@ const selectedArea = ref(null)
 const showBottomSheet = ref(false)
 const bottomSheetSource = ref('map') // 'map' | 'gallery'
 const currentTab = ref('map')
+const showSuggestions = ref(false)
 
 // ─── Map state (non-reactive, Leaflet handles these) ──────────────────────────
 let map = null
@@ -149,34 +158,7 @@ let locationMarker = null
 let locationAccuracyCircle = null
 
 // ─── Computed ──────────────────────────────────────────────────────────────────
-const sortedAreas = computed(() =>
-  [...AREA_DATA].sort((a, b) => a.name.localeCompare(b.name, 'id', { numeric: true }))
-)
-
-// ─── Helpers ───────────────────────────────────────────────────────────────────
-function normalizeAreaNumber(value) {
-  const raw = String(value || '').trim().toUpperCase()
-  if (!raw) return ''
-
-  const compact = raw.replace(/\s+/g, '')
-  if (areaByName.has(compact)) return compact
-
-  const unitMatch = compact.match(/U\D*0*(\d+)$/)
-  if (unitMatch) {
-    const normalizedUnit = 'U' + unitMatch[1].padStart(2, '0')
-    if (areaByName.has(normalizedUnit)) return normalizedUnit
-  }
-
-  const numbers = compact.match(/\d+/g)
-  if (numbers) {
-    const last = numbers[numbers.length - 1]
-    const padded = String(Number(last)).padStart(3, '0')
-    if (areaByName.has(padded)) return padded
-    if (areaByName.has(last)) return last
-  }
-
-  return compact
-}
+const filteredAreas = computed(() => filterAreas(AREA_DATA, areaInputValue.value, 8))
 
 function toLatLngs(area) {
   // When multiple rings exist, keep only the largest one — small rings are data artifacts
@@ -387,7 +369,7 @@ function showSegment(segmentId) {
 }
 
 function showArea(inputValue) {
-  const normalized = normalizeAreaNumber(inputValue)
+  const normalized = normalizeAreaNumber(inputValue, areaByName)
   const area = areaByName.get(normalized)
 
   if (!area) {
@@ -492,6 +474,18 @@ function onSearch() {
     return
   }
   showArea(value)
+}
+
+function onAreaInputBlur() {
+  setTimeout(() => {
+    showSuggestions.value = false
+  }, 150)
+}
+
+function onSuggestionSelect(area) {
+  areaInputValue.value = area.name
+  showSuggestions.value = false
+  showArea(area.name)
 }
 
 function locateMe() {
