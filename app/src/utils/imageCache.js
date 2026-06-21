@@ -5,7 +5,7 @@
  */
 import { reactive } from 'vue'
 
-const TTL_MS            = 2 * 60 * 60 * 1000  // 2 hours
+const TTL_MS            = 30 * 24 * 60 * 60 * 1000  // 1 month
 const LOADING_TIMEOUT_MS = 15 * 1000      // treat load as stuck after 15 s
 
 // 'loading' | 'loaded' | 'error'

@@ -35,7 +35,7 @@ export default async function handler(req, res) {
         return res.status(502).json({ error: 'Drive download error', detail: text })
       }
       res.setHeader('Content-Type', imgResp.headers.get('content-type') || 'image/png')
-      res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=60')
+      res.setHeader('Cache-Control', 'public, max-age=2592000, s-maxage=2592000, stale-while-revalidate=86400')
       const buffer = await imgResp.arrayBuffer()
       return res.status(200).send(Buffer.from(buffer))
     } catch (err) {
@@ -69,7 +69,7 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: 'Drive download error', detail: text })
     }
     res.setHeader('Content-Type', imgResp.headers.get('content-type') || 'image/png')
-    res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=60')
+    res.setHeader('Cache-Control', 'public, max-age=2592000, s-maxage=2592000, stale-while-revalidate=86400')
     const buffer = await imgResp.arrayBuffer()
     res.status(200).send(Buffer.from(buffer))
   } catch (err) {

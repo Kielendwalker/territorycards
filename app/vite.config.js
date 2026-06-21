@@ -53,7 +53,7 @@ export default defineConfig(({ mode }) => {
               }
               res.statusCode = 200
               res.setHeader('Content-Type', imgResp.headers.get('content-type') || 'image/png')
-              res.setHeader('Cache-Control', 's-maxage=300')
+              res.setHeader('Cache-Control', 'public, max-age=2592000, s-maxage=2592000, stale-while-revalidate=86400')
               const buffer = await imgResp.arrayBuffer()
               res.end(Buffer.from(buffer))
             } catch (err) {
