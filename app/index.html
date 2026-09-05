@@ -9,9 +9,21 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
+    <style>
+      #app-loading {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font: 14px/1.4 system-ui, sans-serif;
+        color: #5b6b73;
+        background: #dbe4e8;
+      }
+    </style>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app"><div id="app-loading">Memuat peta&hellip;</div></div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
