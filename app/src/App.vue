@@ -121,13 +121,20 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import L from 'leaflet'
 import { AREA_DATA } from './data/areaData.js'
 import { SEGMENTS } from './data/segments.js'
 import BottomSheet from './components/BottomSheet.vue'
 import CardGallery from './components/CardGallery.vue'
 import { normalizeAreaNumber, filterAreas } from './utils/areaSearch.js'
+import { shouldApplyLocationUpdate } from './utils/mapHelpers.js'
+
+// Throttle constants for continuous location tracking (watchPosition fires often
+// and can be jittery indoors). 2s min interval keeps updates smooth without lag;
+// 5m min distance lets genuine movement bypass the interval so the dot doesn't lag behind.
+const LOCATION_MIN_INTERVAL_MS = 2000
+const LOCATION_MIN_DISTANCE_METERS = 5
 
 // ─── Reactive state ────────────────────────────────────────────────────────────
 const areaInputValue = ref('')
@@ -156,6 +163,9 @@ let selectedCenter = null
 let selectedRouteArea = null
 let locationMarker = null
 let locationAccuracyCircle = null
+let locationWatchId = null
+let lastAppliedLocationPoint = null
+let hasCenteredOnLocation = false
 
 // ─── Computed ──────────────────────────────────────────────────────────────────
 const filteredAreas = computed(() => filterAreas(AREA_DATA, areaInputValue.value, 8))
@@ -458,6 +468,13 @@ watch(currentTab, (newTab) => {
   if (newTab === 'map' && map) {
     requestAnimationFrame(() => map.invalidateSize())
   }
+  // Pause GPS tracking when the user leaves the map tab — no need to keep a
+  // watch running (battery + privacy) while the map isn't visible.
+  if (newTab === 'gallery') {
+    stopLocationTracking()
+  } else if (newTab === 'map' && !document.hidden) {
+    startLocationTracking()
+  }
 })
 
 function openFromGallery(area) {
@@ -488,48 +505,91 @@ function onSuggestionSelect(area) {
   showArea(area.name)
 }
 
-function locateMe() {
+function applyLocationUpdate(lat, lng, accuracy) {
+  if (!locationMarker) {
+    locationMarker = L.marker([lat, lng], {
+      icon: L.divIcon({
+        className: 'location-icon-wrapper',
+        html: '<div class="my-location-dot"></div>',
+        iconSize: [22, 22],
+        iconAnchor: [11, 11],
+      }),
+      interactive: false,
+      zIndexOffset: 1000,
+    }).addTo(map)
+  } else {
+    locationMarker.setLatLng([lat, lng])
+  }
+
+  if (!locationAccuracyCircle) {
+    locationAccuracyCircle = L.circle([lat, lng], {
+      radius: accuracy,
+      color: '#4285f4',
+      fillColor: '#4285f4',
+      fillOpacity: 0.12,
+      weight: 1,
+      interactive: false,
+    }).addTo(map)
+  } else {
+    locationAccuracyCircle.setLatLng([lat, lng])
+    locationAccuracyCircle.setRadius(accuracy)
+  }
+
+  // Only auto-pan/center on the very first fix after tracking starts —
+  // subsequent updates just move the dot so the map doesn't yank around.
+  if (!hasCenteredOnLocation) {
+    hasCenteredOnLocation = true
+    map.setView([lat, lng], Math.max(map.getZoom(), 16))
+  }
+}
+
+function onLocationError(err) {
+  const msg = err.code === 1 ? 'Izin lokasi ditolak.' : 'Tidak dapat mendeteksi lokasi.'
+  setMessage(msg)
+  setTimeout(() => setMessage(''), 4000)
+}
+
+function startLocationTracking() {
   if (!navigator.geolocation) {
     setMessage('Geolocation tidak didukung browser ini.')
     setTimeout(() => setMessage(''), 3000)
     return
   }
-  navigator.geolocation.getCurrentPosition(
+  if (locationWatchId !== null) return // already tracking
+
+  locationWatchId = navigator.geolocation.watchPosition(
     (pos) => {
       const { latitude: lat, longitude: lng, accuracy } = pos.coords
+      const nextPoint = { lat, lng, timestamp: pos.timestamp || Date.now() }
 
-      if (locationMarker) { locationMarker.remove(); locationMarker = null }
-      if (locationAccuracyCircle) { locationAccuracyCircle.remove(); locationAccuracyCircle = null }
+      if (!shouldApplyLocationUpdate(lastAppliedLocationPoint, nextPoint, {
+        minIntervalMs: LOCATION_MIN_INTERVAL_MS,
+        minDistanceMeters: LOCATION_MIN_DISTANCE_METERS,
+      })) {
+        return
+      }
 
-      locationAccuracyCircle = L.circle([lat, lng], {
-        radius: accuracy,
-        color: '#4285f4',
-        fillColor: '#4285f4',
-        fillOpacity: 0.12,
-        weight: 1,
-        interactive: false,
-      }).addTo(map)
-
-      locationMarker = L.marker([lat, lng], {
-        icon: L.divIcon({
-          className: 'location-icon-wrapper',
-          html: '<div class="my-location-dot"></div>',
-          iconSize: [22, 22],
-          iconAnchor: [11, 11],
-        }),
-        interactive: false,
-        zIndexOffset: 1000,
-      }).addTo(map)
-
-      map.setView([lat, lng], Math.max(map.getZoom(), 16))
+      lastAppliedLocationPoint = nextPoint
+      applyLocationUpdate(lat, lng, accuracy)
     },
-    (err) => {
-      const msg = err.code === 1 ? 'Izin lokasi ditolak.' : 'Tidak dapat mendeteksi lokasi.'
-      setMessage(msg)
-      setTimeout(() => setMessage(''), 4000)
-    },
-    { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 },
+    onLocationError,
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 },
   )
+}
+
+function stopLocationTracking() {
+  if (locationWatchId !== null) {
+    navigator.geolocation.clearWatch(locationWatchId)
+    locationWatchId = null
+  }
+}
+
+function handleVisibilityChange() {
+  if (document.hidden) {
+    stopLocationTracking()
+  } else if (currentTab.value === 'map') {
+    startLocationTracking()
+  }
 }
 
 function onDirectionsClick(event) {
@@ -621,11 +681,18 @@ onMounted(() => {
       map.invalidateSize()
       map.setView([-6.2044, 106.7563], 14)
 
-      // Auto-locate on load (silently ignore if denied/unavailable)
-      locateMe()
+      // Start continuous location tracking (silently ignore if denied/unavailable)
+      startLocationTracking()
     }
 
     doInit()
   })
+
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+})
+
+onUnmounted(() => {
+  stopLocationTracking()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>

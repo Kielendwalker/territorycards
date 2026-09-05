@@ -70,3 +70,42 @@ export function setLayerVisible(layer, map, visible) {
     layer.remove()
   }
 }
+
+/**
+ * Great-circle distance between two {lat, lng} points, in meters.
+ */
+export function haversineDistanceMeters(a, b) {
+  if (!a || !b) return 0
+  const R = 6371000 // Earth radius in meters
+  const toRad = (deg) => (deg * Math.PI) / 180
+  const dLat = toRad(b.lat - a.lat)
+  const dLng = toRad(b.lng - a.lng)
+  const lat1 = toRad(a.lat)
+  const lat2 = toRad(b.lat)
+
+  const sinDLat = Math.sin(dLat / 2)
+  const sinDLng = Math.sin(dLng / 2)
+  const h = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng
+  const c = 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h))
+  return R * c
+}
+
+/**
+ * Decide whether a new geolocation fix should be applied to the map UI,
+ * to throttle noisy/frequent watchPosition updates.
+ * @param {{lat:number,lng:number,timestamp:number}|null} prev - last applied point (null if none yet)
+ * @param {{lat:number,lng:number,timestamp:number}} next - candidate new point
+ * @param {{minIntervalMs:number,minDistanceMeters:number}} options
+ * @returns {boolean} true if the update should be applied
+ */
+export function shouldApplyLocationUpdate(prev, next, { minIntervalMs, minDistanceMeters } = {}) {
+  if (!prev || !next) return true
+
+  const elapsed = next.timestamp - prev.timestamp
+  if (elapsed >= minIntervalMs) return true
+
+  const distance = haversineDistanceMeters(prev, next)
+  if (distance >= minDistanceMeters) return true
+
+  return false
+}
