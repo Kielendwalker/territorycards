@@ -55,7 +55,7 @@
 import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { http } from '../api/http.js'
-import { AUTH_PIN_LOGIN } from '../../../../shared/index.js'
+import { AUTH_PIN_LOGIN } from '@kdtu/shared'
 import { useAuthStore } from '../stores/auth.js'
 import FormField from '../components/FormField.vue'
 

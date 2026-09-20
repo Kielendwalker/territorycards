@@ -41,7 +41,7 @@ import { http } from '../api/http.js'
 import {
   TIMETABLE_PERIODS,
   TIMETABLE_ASSIGNMENTS,
-} from '../../../../shared/index.js'
+} from '@kdtu/shared'
 
 const loading = ref(true)
 const periods = ref([])

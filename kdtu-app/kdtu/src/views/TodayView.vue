@@ -47,7 +47,7 @@ import { RouterLink } from 'vue-router'
 import AppLayout from '../components/AppLayout.vue'
 import EmptyState from '../components/EmptyState.vue'
 import { http } from '../api/http.js'
-import { TIMETABLE_PERIODS, TIMETABLE_ASSIGNMENTS } from '../../../../shared/index.js'
+import { TIMETABLE_PERIODS, TIMETABLE_ASSIGNMENTS } from '@kdtu/shared'
 import { useAuthStore } from '../stores/auth.js'
 
 const auth = useAuthStore()
