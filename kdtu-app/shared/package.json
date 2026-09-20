@@ -1,0 +1,15 @@
+{
+  "name": "@kdtu/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./ui-tokens": "./ui-tokens.js",
+    "./ui-tokens.js": "./ui-tokens.js"
+  },
+  "devDependencies": {
+    "happy-dom": "^15.11.7"
+  }
+}
