@@ -25,9 +25,11 @@ export async function verifySecret (hash, plain) {
 
 // Issue an access + refresh token pair for a given user. Returns raw refresh
 // (to send to caller) and refreshRecord (the row to persist with its hash).
-export function issueTokens ({ id, name, role }) {
+export function issueTokens ({ id, name, role, mustChangePassword = false }) {
   const jti = cryptoRandom()
-  const accessToken = signAccess({ sub: id, name, role })
+  // The mustChangePassword claim travels in the access JWT so middleware can
+  // gate protected routes without an extra DB round-trip per request.
+  const accessToken = signAccess({ sub: id, name, role, mcp: mustChangePassword ? 1 : 0 })
   const refreshToken = signRefresh({ sub: id, role, jti })
   return {
     accessToken,

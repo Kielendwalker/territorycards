@@ -5,13 +5,18 @@
 // test isolation: two apps in the same process must not share counters.
 //
 // Schema reference: server/src/db/schema.sql
-//   admins(username TEXT UNIQUE, password_hash TEXT)
+//   admins(username TEXT UNIQUE, password_hash TEXT, must_change_password INT)
 //   members(name_enc BLOB, pin_hash TEXT, active INT)
 //   refresh_tokens(jti PK, user_id, role, token_hash UNIQUE, ...)
 //
 // Member names are AES-encrypted at rest (see utils/crypto.js). To look up a
 // member by `memberName`, we scan-and-decrypt; a future iteration should add a
 // lookup table keyed by HMAC of the name.
+//
+// First-login hardening: an admin row with must_change_password=1 receives
+// tokens whose access JWT carries mcp=1. requirePasswordChanged() middleware
+// (in middleware/auth.js) blocks every protected route with
+// 403 PASSWORD_RESET_REQUIRED until POST /change-password clears the flag.
 
 import express from 'express'
 import { z } from 'zod'
@@ -19,7 +24,7 @@ import { ERROR_CODES, PASSWORD_MIN_LENGTH, PIN_LENGTH, ROLE } from '@kdtu/shared
 import { issueTokens, decodeRefresh, verifySecret, hashSecret } from '../services/authService.js'
 import { hashToken } from '../utils/jwt.js'
 import { decryptField, deriveKey } from '../utils/crypto.js'
-import { authenticate, requireRole } from '../middleware/auth.js'
+import { authenticate, requireRole, requirePasswordChanged } from '../middleware/auth.js'
 import { authRateLimit } from '../middleware/rateLimit.js'
 
 function fieldKey () {
@@ -110,17 +115,26 @@ export function createAuthRouter () {
     if (!parsed.success) return zodBadInput(res, parsed.error)
     const { username, password } = parsed.data
     const db = req.app.locals.db
-    const row = db.prepare("SELECT id, username, display_name, password_hash FROM admins WHERE username = ?").get(username)
+    const row = db.prepare(
+      "SELECT id, username, display_name, password_hash, must_change_password FROM admins WHERE username = ?"
+    ).get(username)
     if (!row || !(await verifySecret(row.password_hash, password))) {
       return res.status(401).json({ error: ERROR_CODES.UNAUTHORIZED, message: 'Invalid credentials' })
     }
-    const tokens = issueAndPersist(db, { id: row.id, name: row.display_name || row.username, role: ROLE.ADMIN })
+    const mustChange = row.must_change_password === 1
+    const tokens = issueAndPersist(db, {
+      id: row.id,
+      name: row.display_name || row.username,
+      role: ROLE.ADMIN,
+      mustChangePassword: mustChange,
+    })
     setSessionCookie(res, tokens.accessToken)
     res.json({
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       role: ROLE.ADMIN,
       user: { id: row.id, name: row.display_name || row.username },
+      mustChangePassword: mustChange,
     })
   })
 
@@ -166,10 +180,24 @@ export function createAuthRouter () {
     const name = row.role === ROLE.ADMIN
       ? (db.prepare('SELECT display_name, username FROM admins WHERE id = ?').get(row.user_id)?.display_name || 'admin')
       : memberNameForUserId(db, row.user_id)
-    const tokens = issueAndPersist(db, { id: row.user_id, name, role: row.role })
+    // Re-read must_change_password on every refresh so a password rotation
+    // in another tab/session takes effect without forcing a re-login.
+    let mustChangePassword = false
+    if (row.role === ROLE.ADMIN) {
+      mustChangePassword = db.prepare(
+        'SELECT must_change_password FROM admins WHERE id = ?'
+      ).get(row.user_id)?.must_change_password === 1
+    }
+    const tokens = issueAndPersist(db, {
+      id: row.user_id, name, role: row.role, mustChangePassword,
+    })
     db.prepare('UPDATE refresh_tokens SET revoked_at = ? WHERE jti = ?').run(new Date().toISOString(), row.jti)
     setSessionCookie(res, tokens.accessToken)
-    res.json({ accessToken: tokens.accessToken, refreshToken: tokens.refreshToken })
+    res.json({
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      mustChangePassword,
+    })
   })
 
   // POST /logout — revoke a refresh token (no-op if unknown).
@@ -185,12 +213,20 @@ export function createAuthRouter () {
     res.json({ ok: true })
   })
 
-  // GET /me — current user from access token.
-  router.get('/me', authenticate, (req, res) => {
-    res.json({ id: req.user.id, name: req.user.name, role: req.user.role })
+  // GET /me — current user from access token. Gated by requirePasswordChanged
+  // so a fresh admin must rotate before reading their own profile data.
+  router.get('/me', authenticate, requirePasswordChanged, (req, res) => {
+    res.json({
+      id: req.user.id,
+      name: req.user.name,
+      role: req.user.role,
+      mustChangePassword: req.user.mustChangePassword === true,
+    })
   })
 
-  // POST /change-password — admin only, min 10 chars for the new password.
+  // POST /change-password — admin only, min PASSWORD_MIN_LENGTH chars for the
+  // new password. NOT gated by requirePasswordChanged because rotating the
+  // credential is exactly what an unrotated admin needs to do.
   router.post('/change-password', authenticate, requireRole(ROLE.ADMIN), async (req, res) => {
     const parsed = changePasswordSchema.safeParse(req.body)
     if (!parsed.success) return zodBadInput(res, parsed.error)
@@ -200,9 +236,18 @@ export function createAuthRouter () {
     if (!row || !(await verifySecret(row.password_hash, currentPassword))) {
       return res.status(401).json({ error: ERROR_CODES.UNAUTHORIZED, message: 'Current password incorrect' })
     }
+    if (currentPassword === newPassword) {
+      return res.status(400).json({
+        error: ERROR_CODES.VALIDATION,
+        message: 'New password must differ from the current one',
+      })
+    }
     const newHash = await hashSecret(newPassword)
-    db.prepare('UPDATE admins SET password_hash = ? WHERE id = ?').run(newHash, req.user.id)
-    res.json({ ok: true })
+    // Clear must_change_password so subsequent requests pass the gate.
+    db.prepare(
+      'UPDATE admins SET password_hash = ?, must_change_password = 0 WHERE id = ?'
+    ).run(newHash, req.user.id)
+    res.json({ ok: true, mustChangePassword: false })
   })
 
   return router

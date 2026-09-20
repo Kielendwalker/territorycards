@@ -174,4 +174,10 @@ export const ERROR_CODES = Object.freeze({
   CONFLICT: 'CONFLICT',
   RATE_LIMITED: 'RATE_LIMITED',
   SERVER: 'SERVER_ERROR',
+  // Returned with HTTP 403 by auth middleware when the caller authenticated
+  // with a credential marked must_change_password=1. Body carries
+   // { error: 'PASSWORD_RESET_REQUIRED' } and the client should redirect to
+   // the change-password flow. The /api/auth/change-password and
+   // /api/auth/logout endpoints are exempted from the gate.
+  PASSWORD_RESET_REQUIRED: 'PASSWORD_RESET_REQUIRED',
 })

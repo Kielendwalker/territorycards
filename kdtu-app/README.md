@@ -50,8 +50,15 @@ Default seeded credentials:
 
 | App | Login | Password / PIN |
 |-----|-------|----------------|
-| kdtu-admin | `admin` | `admin12345` (change after first login) |
+| kdtu-admin | `koordinator_srengseng3` | printed once by `npm run server:seed` |
 | kdtu | member name + 4-digit PIN (seeded from xlsx) |
+
+The seed script generates a **random** 32-character admin password and prints it
+once on stdout. The admin row is flagged `must_change_password = 1`; every
+protected endpoint (including `GET /api/auth/me`) returns
+`403 PASSWORD_RESET_REQUIRED` until the admin rotates via
+`POST /api/auth/change-password`. Copy the password from the seed output
+immediately — it is not stored in plaintext and will not be reprinted.
 
 ## Security notes
 
@@ -61,3 +68,6 @@ Default seeded credentials:
   application-level AES-256-GCM with a key derived from `KDTU_FIELD_KEY`.
 - Tokens are JWT HS256 with 15-minute lifetime, refresh via `/api/auth/refresh`.
 - Rate limit: `express-rate-limit` 100 req / 15 min default, 5 / 15 min on `/login`.
+- First-login guard: seeded admin must rotate the credential before any
+  protected route returns a 200 (403 PASSWORD_RESET_REQUIRED otherwise). The
+  `must_change_password` flag can also be set by an operator to force a reset.

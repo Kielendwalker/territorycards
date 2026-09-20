@@ -1,6 +1,7 @@
 // auth middleware — JWT verification + role gates.
 // Verifies the access token (Authorization: Bearer ...) or the
-// `kdtu_session` cookie. Attaches `req.user = { id, name, role }` on success.
+// `kdtu_session` cookie. Attaches `req.user = { id, name, role, mustChangePassword }`
+// on success.
 
 import { verifyAccess } from '../utils/jwt.js'
 import { ERROR_CODES } from '@kdtu/shared'
@@ -14,7 +15,12 @@ export function authenticate (req, res, next) {
   }
   try {
     const payload = verifyAccess(token)
-    req.user = { id: payload.sub, name: payload.name, role: payload.role }
+    req.user = {
+      id: payload.sub,
+      name: payload.name,
+      role: payload.role,
+      mustChangePassword: payload.mcp === 1,
+    }
     return next()
   } catch {
     return res.status(401).json({ error: ERROR_CODES.UNAUTHORIZED, message: 'Invalid or expired token' })
@@ -31,6 +37,22 @@ export function requireRole (...roles) {
     }
     return next()
   }
+}
+
+// Reject the request unless the caller has rotated their seeded/reset password.
+// Allowlisted by mount path: the change-password and logout endpoints must
+// remain reachable so the admin can actually perform the rotation.
+export function requirePasswordChanged (req, res, next) {
+  if (!req.user) {
+    return res.status(401).json({ error: ERROR_CODES.UNAUTHORIZED, message: 'Unauthenticated' })
+  }
+  if (req.user.mustChangePassword) {
+    return res.status(403).json({
+      error: ERROR_CODES.PASSWORD_RESET_REQUIRED,
+      message: 'Default password in use. Rotate via POST /api/auth/change-password before continuing.',
+    })
+  }
+  return next()
 }
 
 function extractBearer (header) {

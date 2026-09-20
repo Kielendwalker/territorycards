@@ -6,7 +6,12 @@ CREATE TABLE IF NOT EXISTS admins (
   password_hash TEXT NOT NULL,
   display_name  TEXT,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-  last_login_at TEXT
+  last_login_at TEXT,
+  -- must_change_password = 1 means the seeded (or reset) password is still in
+  -- use and the admin must rotate it before reaching any protected route.
+  -- The auth router rejects requests with a 403 PASSWORD_RESET_REQUIRED until
+  -- POST /api/auth/change-password clears the flag.
+  must_change_password INTEGER NOT NULL DEFAULT 0 CHECK(must_change_password IN (0,1))
 );
 
 CREATE TABLE IF NOT EXISTS members (

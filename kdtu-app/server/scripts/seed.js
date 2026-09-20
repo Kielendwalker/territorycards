@@ -14,6 +14,7 @@ import { encryptField, decryptField, deriveKey } from '../src/utils/crypto.js'
 import argon2 from 'argon2'
 import XLSX from 'xlsx'
 import { existsSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -84,11 +85,19 @@ async function seed() {
   const fieldKey = deriveKey(process.env.KDTU_FIELD_KEY)
 
   // --- admin ---
-  const adminHash = await argon2.hash('admin12345', { type: argon2.argon2id })
+  // Default seed admin uses a project-specific username (no 'admin' substring
+  // so it can't be guessed from the role) and a strong random password that
+  // is printed once to stdout. The must_change_password flag forces rotation
+  // on first login; the auth router rejects every other endpoint with
+  // 403 PASSWORD_RESET_REQUIRED until POST /api/auth/change-password runs.
+  const DEFAULT_ADMIN_USERNAME = 'koordinator_srengseng3'
+  // 24 random bytes -> 32 base64url chars, no ambiguous glyphs.
+  const defaultAdminPassword = randomBytes(24).toString('base64url')
+  const adminHash = await argon2.hash(defaultAdminPassword, { type: argon2.argon2id })
   db.prepare(
-    `INSERT OR IGNORE INTO admins (username, password_hash, display_name)
-     VALUES (?, ?, ?)`
-  ).run('admin', adminHash, 'Administrator')
+    `INSERT OR IGNORE INTO admins (username, password_hash, display_name, must_change_password)
+     VALUES (?, ?, ?, 1)`
+  ).run(DEFAULT_ADMIN_USERNAME, adminHash, 'Koordinator SIDANG SRENGSENG-3')
 
   const ttWb = XLSX.readFile(TIMETABLE_XLSX, { cellDates: true })
   const rkWb = XLSX.readFile(RINGKASAN_XLSX, { cellDates: true })
@@ -352,6 +361,26 @@ async function seed() {
     `Seeded ${memberCount} members, ${periodCount} periods, ${pubTotal} publications, ${summaryCount} summary rows`
   )
   console.log(`  (inserted ${assignmentsCount} assignments, ${pubCount} new publications)`)
+
+  // Print the seed credentials once on a fresh DB (INSERT OR IGNORE skips
+  // existing rows, so re-seeding keeps the original password). The admin is
+  // forced to rotate on first login via must_change_password.
+  const adminRow = db.prepare(
+    `SELECT username FROM admins WHERE username = ?`
+  ).get(DEFAULT_ADMIN_USERNAME)
+  if (adminRow) {
+    console.log('')
+    console.log('================================================================')
+    console.log(' DEFAULT ADMIN (rotate immediately on first login)')
+    console.log('================================================================')
+    console.log(`   username: ${DEFAULT_ADMIN_USERNAME}`)
+    console.log(`   password: ${defaultAdminPassword}`)
+    console.log('================================================================')
+    console.log(' Copy the password now — it is not stored in plaintext and will')
+    console.log(' not be printed again on subsequent `npm run server:seed` runs.')
+    console.log('================================================================')
+    console.log('')
+  }
 
   closeDb()
 }

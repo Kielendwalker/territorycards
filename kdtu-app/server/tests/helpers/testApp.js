@@ -2,7 +2,7 @@
 //
 // The mock mirrors what production needs from server/src/db/schema.sql for the
 // auth surface:
-//   admins(id, username UNIQUE, password_hash, display_name)
+//   admins(id, username UNIQUE, password_hash, display_name, must_change_password)
 //   members(id, name_enc BLOB, pin_hash, active)
 //   refresh_tokens(jti PK, user_id, role, token_hash UNIQUE,
 //                  expires_at, revoked_at, created_at)
@@ -11,6 +11,14 @@
 // Member names are stored as AES-GCM ciphertext via utils/crypto.js so that
 // `findMemberByName` can decrypt-match. When sub-agent F's openDb() lands,
 // tests can swap in the real handle and drop this helper.
+//
+// Signature: buildTestApp({ admin?: {...}, member?: {...} })
+//
+// Accepts both legacy and modern shapes for backward compatibility:
+//   admin:  { name, password }                       (legacy — `name` doubles as username/display_name)
+//   admin:  { username, password, display_name?, must_change_password? }  (modern)
+//   member: { name, pin }                            (legacy — `name` is the plaintext name)
+//   member: { name, pin }                            (modern — same as legacy)
 
 import argon2 from 'argon2'
 import { createApp } from '../../src/index.js'
@@ -23,17 +31,13 @@ function createMockDb () {
   const tables = Object.fromEntries(SCHEMA_TABLES.map(t => [t, []]))
   const autoInc = { admins: 0, members: 0, audit_log: 0 }
 
-  function splitStatements (sql) {
-    return sql.split(/;\s*\n?/).map(s => s.trim()).filter(Boolean)
-  }
-
   function nextId (table) {
     if (!(table in autoInc)) throw new Error(`no autoinc for ${table}`)
     autoInc[table] += 1
     return autoInc[table]
   }
 
-  function exec (sql) {
+  function exec (_sql) {
     // No-op for CREATE statements. Mock starts with empty tables.
   }
 
@@ -81,7 +85,17 @@ function createMockDb () {
       _run (...params) {
         if (upper.startsWith('INSERT INTO ADMINS')) {
           const id = nextId('admins')
-          tables.admins.push({ id, username: params[0], password_hash: params[1], display_name: params[2] })
+          // Two shapes are supported:
+          //   (username, password_hash, display_name)                       — 3 args
+          //   (username, password_hash, display_name, must_change_password) — 4 args
+          const mustChange = params.length >= 4 ? (params[3] === 1 || params[3] === true ? 1 : 0) : 0
+          tables.admins.push({
+            id,
+            username: params[0],
+            password_hash: params[1],
+            display_name: params[2],
+            must_change_password: mustChange,
+          })
           return { changes: 1, lastInsertRowid: id }
         }
         if (upper.startsWith('INSERT INTO MEMBERS')) {
@@ -128,7 +142,22 @@ function createMockDb () {
           return { changes }
         }
         if (upper.startsWith('UPDATE ADMINS')) {
-          // UPDATE admins SET password_hash = ? WHERE id = ?
+          // Update forms seen in production:
+          // SQLCipher better-sqlite3 binds only ? placeholders, not literals,
+          // so MUST_CHANGE_PASSWORD = 0 is a literal in the SQL. The two
+          // production UPDATE ADMINS shapes are therefore 2-arg:
+          //   SET password_hash = ? WHERE id = ?                             — params: [hash, id]
+          //   SET password_hash = ?, must_change_password = 0 WHERE id = ?   — params: [hash, id]
+          if (/MUST_CHANGE_PASSWORD/i.test(trimmed)) {
+            const id = params[1]
+            const newHash = params[0]
+            for (const a of tables.admins) if (a.id === id) {
+              a.password_hash = newHash
+              a.must_change_password = 0
+              return { changes: 1 }
+            }
+            return { changes: 0 }
+          }
           const id = params[1], h = params[0]
           for (const a of tables.admins) if (a.id === id) { a.password_hash = h; return { changes: 1 } }
           return { changes: 0 }
@@ -157,22 +186,53 @@ function createMockDb () {
   return { prepare, exec, transaction, close, pragma, _tables: tables }
 }
 
-export async function buildTestApp ({ seed = {} } = {}) {
+function normalizeAdmin (raw) {
+  // Accept either { name, password } (legacy) or { username, password, display_name, must_change_password }
+  // (modern). Falls back to a known-good default if `raw` is missing.
+  if (!raw) {
+    return {
+      username: 'admin',
+      password: 'correct-horse-battery-staple',
+      display_name: 'admin',
+      must_change_password: 0,
+    }
+  }
+  const username = raw.username ?? raw.name
+  if (!username) throw new Error('buildTestApp: admin must have `username` (or legacy `name`)')
+  if (!raw.password) throw new Error('buildTestApp: admin must have `password`')
+  return {
+    username,
+    password: raw.password,
+    display_name: raw.display_name ?? raw.name ?? username,
+    must_change_password: raw.must_change_password ?? 0,
+  }
+}
+
+function normalizeMember (raw) {
+  if (!raw) return { name: 'Alice', pin: '1234' }
+  if (!raw.name) throw new Error('buildTestApp: member must have `name`')
+  if (!raw.pin) throw new Error('buildTestApp: member must have `pin`')
+  return { name: raw.name, pin: raw.pin }
+}
+
+export async function buildTestApp ({ admin: adminRaw, member: memberRaw } = {}) {
   process.env.KDTU_JWT_SECRET = 'test-secret-test-secret-test-secret-1234'
   // >= 32 char field key is required by the encryption helpers for member name lookup.
   process.env.KDTU_FIELD_KEY  = 'test-field-key-test-field-key-test-field-AB'
   process.env.NODE_ENV = 'test'
 
   const db = createMockDb()
-  const admin = seed.admin || { username: 'admin', password: 'correct-horse-battery-staple', display_name: 'admin' }
-  const member = seed.member || { name: 'Alice', pin: '1234' }
+  const admin = normalizeAdmin(adminRaw)
+  const member = normalizeMember(memberRaw)
 
   const fieldKey = deriveKey(process.env.KDTU_FIELD_KEY)
   const adminHash = await argon2.hash(admin.password, { type: argon2.argon2id })
   const memberPinHash = await argon2.hash(member.pin, { type: argon2.argon2id })
   const memberNameEnc = encryptField(member.name, fieldKey)
 
-  db.prepare('INSERT INTO admins (username, password_hash, display_name) VALUES (?, ?, ?)').run(admin.username, adminHash, admin.display_name)
+  db.prepare(
+    'INSERT INTO admins (username, password_hash, display_name, must_change_password) VALUES (?, ?, ?, ?)'
+  ).run(admin.username, adminHash, admin.display_name, admin.must_change_password ?? 0)
   db.prepare('INSERT INTO members (name_enc, pin_hash) VALUES (?, ?)').run(memberNameEnc, memberPinHash)
 
   const app = createApp({ db })
