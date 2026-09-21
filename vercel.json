@@ -1,0 +1,48 @@
+{
+  // Vercel deploys the two static front-ends (kdtu + kdtu-admin) under
+  // separate subdomains. The Express API is NOT deployed here — it lives on
+  // Render (see render.yaml) because SQLCipher requires a persistent disk and
+  // Vercel serverless functions are stateless + ephemeral.
+  //
+  // Build & output:
+  //   kdtu      -> kdtu-app/kdtu/dist         (vue + vite SPA)
+  //   kdtu-admin-> kdtu-app/kdtu-admin/dist   (vue + vite SPA)
+  //
+  // Rewrites: unknown paths fall back to the SPA index so vue-router can
+  // handle them.
+  //
+  // Headers: long-cache hashed assets, no-cache for index.html so deployments
+  // take effect immediately.
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm --prefix kdtu-app run build",
+  "installCommand": "npm --prefix kdtu-app install --no-audit --no-fund",
+  "framework": null,
+  "trailingSlash": false,
+  "projects": [
+    {
+      "name": "kdtu-admin",
+      "root": "kdtu-app/kdtu-admin",
+      "buildCommand": "npx vite build",
+      "installCommand": "npm install --no-audit --no-fund",
+      "outputDirectory": "dist",
+      "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+      "headers": [
+        {
+          "source": "/assets/(.*)",
+          "headers": [
+            { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+          ]
+        },
+        {
+          "source": "/index.html",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+          ]
+        }
+      ]
+    }
+  ],
+  "git": {
+    "deploymentEnabled": { "feature/add-kdtu-admin": true, "main": true }
+  }
+}

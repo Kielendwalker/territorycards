@@ -27,14 +27,20 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
   // does not yet exist (tests, CI before asset sync). The first .scan() /
   // .resolve() call will surface a clean ENOENT error.
   let _kdtuDataDir = null
-  function kdtuDataDir () {
-    if (_kdtuDataDir) return _kdtuDataDir
-    // This file lives at kdtu-app/server/src/routes/files.js, so four `..`s
-    // climb back to the workspace root where kdtu-data/ lives.
-    const candidate = join(__dirname, '..', '..', '..', '..', 'kdtu-data')
-    _kdtuDataDir = realpathSync(candidate)
-    return _kdtuDataDir
-  }
+function kdtuDataDir () {
+  if (_kdtuDataDir) return _kdtuDataDir
+  // Resolution order:
+  //   1. KDTU_DATA_DIR env var (used by Render/Fly production deployments
+  //      where the asset folder lives on a persistent disk at /var/data).
+  //   2. Four `..`s up from this file (kdtu-data/ in the monorepo root) for
+  //      local dev where the route file and the assets share the workspace.
+  const envDir = process.env.KDTU_DATA_DIR
+  const candidate = envDir
+    ? envDir
+    : join(__dirname, '..', '..', '..', '..', 'kdtu-data')
+  _kdtuDataDir = realpathSync(candidate)
+  return _kdtuDataDir
+}
 
 // Conservative mime map; everything else falls back to application/octet-stream
 // so the browser always offers "Save as".

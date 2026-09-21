@@ -1,0 +1,61 @@
+# Render Blueprint for the KDTU backend API.
+#
+# The Express server is deployed as a "Web Service" with a persistent disk so
+# SQLCipher can keep its encrypted database between deploys. kdtu-data/ lives
+# on the same disk so newly-uploaded spreadsheets/jpegs survive restarts.
+#
+# Environment variables are NOT committed. Provision them on the Render
+# dashboard, then re-deploy. See kdtu-app/server/src/env.js for the full list.
+#
+# To create this service from the dashboard:
+#   1. New > Blueprint > point at this repo
+#   2. Render reads render.yaml + applies the plan
+#   3. Generate values for KDTU_DB_KEY, KDTU_FIELD_KEY, KDTU_JWT_SECRET in the
+#      dashboard (or via `openssl rand -base64 48` locally) and paste them in.
+
+services:
+  - type: web
+    name: kdtu-api
+    runtime: node
+    rootDir: kdtu-app/server
+    plan: starter           # smallest plan with a disk
+    region: singapore
+    branch: feature/add-kdtu-admin
+    buildCommand: npm --prefix kdtu-app install --no-audit --no-fund
+    startCommand: npm --prefix kdtu-app run server:start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    disk:
+      name: kdtu-state
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      # Tell the server where to put its SQLite file + asset folder on disk.
+      - key: KDTU_DB_FILE
+        value: /var/data/kdtu.db
+      - key: KDTU_DATA_DIR
+        value: /var/data/kdtu-data
+      # These three must be supplied via the Render dashboard — never commit
+      # real keys. They are placeholders so the blueprint parses.
+      - key: KDTU_DB_KEY
+        generateValue: true
+      - key: KDTU_FIELD_KEY
+        generateValue: true
+      - key: KDTU_JWT_SECRET
+        generateValue: true
+      # Node tuning. better-sqlite3-multiple-ciphers is CPU-bound so we keep
+      # one worker per available CPU; let Render scale horizontally instead.
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"
+      - key: KDTU_ALLOWED_ORIGINS
+        # Replace with the actual Vercel domain once the front-end is live.
+        value: "https://kdtu-admin.vercel.app,https://kdtu.vercel.app"
+    buildFilter:
+      ignoredPaths:
+        - kdtu-app/kdtu/**
+        - kdtu-app/kdtu-admin/**
+        - kdtu-app/shared/**
+        - kdtu-app/scripts/**
+        - kdtu-app/README.md

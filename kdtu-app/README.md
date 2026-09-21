@@ -71,3 +71,62 @@ immediately — it is not stored in plaintext and will not be reprinted.
 - First-login guard: seeded admin must rotate the credential before any
   protected route returns a 200 (403 PASSWORD_RESET_REQUIRED otherwise). The
   `must_change_password` flag can also be set by an operator to force a reset.
+
+## Deployment
+
+The application is split between two hosts:
+
+| Surface  | Host   | Why                                                                                       |
+|----------|--------|--------------------------------------------------------------------------------------------|
+| `kdtu` + `kdtu-admin` front-ends (Vue 3 SPAs) | **Vercel** | Static build, cheap, edge CDN, automatic HTTPS. |
+| Express API + SQLCipher DB + `kdtu-data/` assets | **Render** (or Fly.io) | Needs a persistent disk for the encrypted database and uploaded spreadsheets/images. Vercel serverless functions are ephemeral and cannot host SQLCipher. |
+
+### Front-ends on Vercel
+
+1. Import the GitHub repo at <https://vercel.com/new>.
+2. Set **Root Directory** = `kdtu-app/kdtu-admin` for the admin app and
+   `kdtu-app/kdtu` for the member app. (Or use the existing `vercel.json`
+   which configures `kdtu-admin` as a project.)
+3. Override the API base URL by setting `VITE_API_BASE` (or proxy `/api` from
+   the front-end to the Render host via a `rewrites` entry + a Vercel rewrite
+   rule). The simplest setup: configure both front-ends to call `/api/...`
+   directly and add a Vercel rewrite that 307s `/api/*` to the Render host —
+   this keeps CORS simple because the browser still sees a same-origin URL.
+4. Build command is `npm run build` (vite); output directory is `dist`.
+
+### API on Render
+
+`render.yaml` is checked in. Render reads it as a Blueprint and provisions the
+`kdtu-api` web service with a 1 GB persistent disk mounted at `/var/data`.
+
+Required env (set on the Render dashboard or via `render env:set`):
+
+| Variable           | Notes                                                                    |
+|--------------------|--------------------------------------------------------------------------|
+| `KDTU_DB_KEY`      | ≥ 32-char SQLCipher passphrase. **Never commit.** |
+| `KDTU_FIELD_KEY`   | ≥ 32-char key for AES-256-GCM field encryption. **Never commit.** |
+| `KDTU_JWT_SECRET`  | ≥ 32-char HS256 secret. **Never commit.** |
+| `KDTU_DB_FILE`     | `/var/data/kdtu.db` (mounted disk). |
+| `KDTU_DATA_DIR`    | `/var/data/kdtu-data` (uploaded spreadsheets + images). |
+| `KDTU_ALLOWED_ORIGINS` | Comma-separated list of front-end origins (the Vercel URLs). |
+| `NODE_ENV`         | `production`. |
+| `PORT`             | Render injects this; the server already reads it. |
+
+After the first deploy:
+
+1. SSH in via the Render shell and run `npm run server:seed` once to mint the
+   initial admin user. Copy the printed password — it is shown only once.
+2. Upload the contents of `kdtu-data/` (or new spreadsheets/images) into
+   `/var/data/kdtu-data/` on the disk. The next process restart will re-index
+   them into the `files` table. (Or call a future `POST /api/files/reindex`
+   once that endpoint exists.)
+3. Log into the admin front-end, rotate the password, upload the rest of the
+   members + KDL + publication data.
+
+### Fly.io alternative
+
+The same `server/` workspace builds into a Docker image (`Dockerfile` is not
+checked in yet — run `fly launch` once, accept the generated Dockerfile). A
+Fly persistent volume mounted at `/var/data` substitutes for the Render disk;
+the env vars above map 1:1. Choose a Singapore or Jakarta region to keep
+latency low for Indonesian operators.
