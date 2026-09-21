@@ -1,52 +1,72 @@
 <template>
   <div class="kdtu-login">
     <div class="kdtu-login__card">
-      <h1 class="kdtu-login__brand">KDTU</h1>
-      <p class="kdtu-login__tagline">SIDANG SRENGSENG-3</p>
-      <p class="kdtu-login__intro">
-        Masukkan nama dan PIN 4 digit untuk melihat jadwal pelayanan Anda.
-      </p>
+      <!--
+        When MEMBER_LOGIN_ENABLED is false we hide the PIN form and show a
+        clear notice. The API surface has been killed (POST /api/auth/pin-login
+        returns 410) so even a hand-crafted request would fail. This keeps the
+        public kdtu workspace from looking like a working login page while the
+        admin surface is the only live route.
+      -->
+      <template v-if="!MEMBER_LOGIN_ENABLED">
+        <h1 class="kdtu-login__brand">KDTU</h1>
+        <p class="kdtu-login__tagline">SIDANG SRENGSENG-3</p>
+        <p class="kdtu-login__notice">
+          Halaman login anggota dinonaktifkan. Akses jadwal &amp; tugas
+          sekarang hanya tersedia melalui konsol koordinator (KDTU Admin).
+          Hubungi koordinator KDTU jika Anda adalah anggota yang membutuhkan
+          informasi terbaru.
+        </p>
+      </template>
 
-      <FormField label="Nama" :error="errors.name">
-        <template #default="{ id }">
-          <input
-            :id="id"
-            v-model="name"
-            class="kdtu-input"
-            type="text"
-            autocomplete="username"
-            placeholder="contoh: Budi Santoso"
-            @keydown.enter="onSubmit"
-          />
-        </template>
-      </FormField>
+      <template v-else>
+        <h1 class="kdtu-login__brand">KDTU</h1>
+        <p class="kdtu-login__tagline">SIDANG SRENGSENG-3</p>
+        <p class="kdtu-login__intro">
+          Masukkan nama dan PIN 4 digit untuk melihat jadwal pelayanan Anda.
+        </p>
 
-      <FormField label="PIN" :error="errors.pin">
-        <template #default="{ id }">
-          <input
-            :id="id"
-            v-model="pin"
-            class="kdtu-input kdtu-input--pin"
-            inputmode="numeric"
-            pattern="[0-9]*"
-            maxlength="4"
-            autocomplete="one-time-code"
-            placeholder="••••"
-            @keydown.enter="onSubmit"
-          />
-        </template>
-      </FormField>
+        <FormField label="Nama" :error="errors.name">
+          <template #default="{ id }">
+            <input
+              :id="id"
+              v-model="name"
+              class="kdtu-input"
+              type="text"
+              autocomplete="username"
+              placeholder="contoh: Budi Santoso"
+              @keydown.enter="onSubmit"
+            />
+          </template>
+        </FormField>
 
-      <p v-if="errorMessage" class="kdtu-login__error">{{ errorMessage }}</p>
+        <FormField label="PIN" :error="errors.pin">
+          <template #default="{ id }">
+            <input
+              :id="id"
+              v-model="pin"
+              class="kdtu-input kdtu-input--pin"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              maxlength="4"
+              autocomplete="one-time-code"
+              placeholder="••••"
+              @keydown.enter="onSubmit"
+            />
+          </template>
+        </FormField>
 
-      <button
-        type="button"
-        class="kdtu-btn kdtu-btn--primary kdtu-btn--block"
-        :disabled="loading"
-        @click="onSubmit"
-      >
-        {{ loading ? 'Memeriksa…' : 'Masuk' }}
-      </button>
+        <p v-if="errorMessage" class="kdtu-login__error">{{ errorMessage }}</p>
+
+        <button
+          type="button"
+          class="kdtu-btn kdtu-btn--primary kdtu-btn--block"
+          :disabled="loading"
+          @click="onSubmit"
+        >
+          {{ loading ? 'Memeriksa…' : 'Masuk' }}
+        </button>
+      </template>
     </div>
   </div>
 </template>
@@ -55,7 +75,7 @@
 import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { http } from '../api/http.js'
-import { AUTH_PIN_LOGIN } from '@kdtu/shared'
+import { AUTH_PIN_LOGIN, MEMBER_LOGIN_ENABLED } from '@kdtu/shared'
 import { useAuthStore } from '../stores/auth.js'
 import FormField from '../components/FormField.vue'
 
@@ -149,6 +169,17 @@ async function onSubmit() {
   text-align: center;
   color: var(--kdtu-color-ink-muted);
   line-height: 1.5;
+}
+
+.kdtu-login__notice {
+  margin: var(--kdtu-space-2) 0 0;
+  padding: var(--kdtu-space-4);
+  background: var(--kdtu-color-warning-soft, #fef3c7);
+  color: var(--kdtu-color-warning-strong, #92400e);
+  border-radius: var(--kdtu-radius-md);
+  font-size: var(--kdtu-font-size-sm);
+  line-height: 1.55;
+  text-align: center;
 }
 
 .kdtu-input--pin {

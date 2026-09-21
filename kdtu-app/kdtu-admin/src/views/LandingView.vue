@@ -16,10 +16,12 @@
         returns <code>403 PASSWORD_RESET_REQUIRED</code> until then.
       </p>
       <p class="muted">
-        Full CRUD screens (KDL, members, publications, summary, timetable) are
-        being scaffolded in follow-up PRs. The API at
+        Halaman <router-link to="/files">/files</router-link> sudah tersedia —
+        menampilkan spreadsheet dan gambar HD dari folder
+        <code>kdtu-data/</code> di server. CRUD lengkap (KDL, members,
+        publications, summary, timetable) menyusul di PR berikutnya. API di
         <a href="http://localhost:5180/api/health" target="_blank" rel="noreferrer">/api/health</a>
-        is reachable.
+        dapat dicek.
       </p>
 
       <form class="probe-form" @submit.prevent="probe">
