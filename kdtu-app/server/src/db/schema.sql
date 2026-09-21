@@ -132,3 +132,17 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 );
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens (user_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens (token_hash);
+
+-- files — metadata for downloadable assets under kdtu-data/ (xlsx + images).
+-- Populated by scanKdtuDataDir() at API boot. The filesystem path is never
+-- exposed to clients; downloads go through /api/files/:id/download which
+-- resolves the path server-side with realpath() and a directory-prefix check.
+CREATE TABLE IF NOT EXISTS files (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  name        TEXT NOT NULL UNIQUE,
+  kind        TEXT NOT NULL CHECK(kind IN ('spreadsheet', 'image', 'document')),
+  size_bytes  INTEGER NOT NULL,
+  updated_at  TEXT NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_files_kind ON files (kind);

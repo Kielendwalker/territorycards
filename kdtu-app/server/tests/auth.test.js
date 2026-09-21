@@ -59,21 +59,24 @@ describe('POST /api/auth/login', () => {
 })
 
 describe('POST /api/auth/pin-login', () => {
-  it('returns 200 for valid member + correct PIN', async () => {
+  // The member PIN-login surface is disabled (see MEMBER_LOGIN_ENABLED=false
+  // in @kdtu/shared and the 410 response in routes/auth.js). These tests
+  // pin that the endpoint returns Gone for both valid and invalid credentials
+  // — we never want a member to receive a token, even if the PIN is right.
+  it('returns 410 Gone for valid member + correct PIN', async () => {
     const res = await request(ctx.app)
       .post('/api/auth/pin-login')
       .send({ memberName: 'Alice', pin: '1234' })
-    expect(res.status).toBe(200)
-    expect(res.body.role).toBe('member')
-    expect(res.body.accessToken).toBeTruthy()
+    expect(res.status).toBe(410)
+    expect(res.body.message).toMatch(/disabled/i)
   })
 
-  it('returns 401 for wrong PIN', async () => {
+  it('returns 410 Gone for wrong PIN as well', async () => {
     const res = await request(ctx.app)
       .post('/api/auth/pin-login')
       .send({ memberName: 'Alice', pin: '0000' })
-    expect(res.status).toBe(401)
-    expect(res.body.error).toBe('UNAUTHORIZED')
+    expect(res.status).toBe(410)
+    expect(res.body.message).toMatch(/disabled/i)
   })
 })
 

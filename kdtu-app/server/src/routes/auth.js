@@ -140,21 +140,14 @@ export function createAuthRouter () {
 
   // POST /pin-login — member name + 4-digit PIN.
   router.post('/pin-login', async (req, res) => {
-    const parsed = pinLoginSchema.safeParse(req.body)
-    if (!parsed.success) return zodBadInput(res, parsed.error)
-    const { memberName, pin } = parsed.data
-    const db = req.app.locals.db
-    const row = findMemberByName(db, memberName)
-    if (!row || !(await verifySecret(row.pin_hash, pin))) {
-      return res.status(401).json({ error: ERROR_CODES.UNAUTHORIZED, message: 'Invalid credentials' })
-    }
-    const tokens = issueAndPersist(db, { id: row.id, name: memberName, role: ROLE.MEMBER })
-    setSessionCookie(res, tokens.accessToken)
-    res.json({
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-      role: ROLE.MEMBER,
-      user: { id: row.id, name: memberName },
+    // The kdtu member app is no longer reachable publicly; only the admin
+    // console remains. Return 410 Gone so any leaked client or bot that
+    // still POSTs here fails loudly instead of probing member credentials.
+    // The `members` table and PIN data are preserved on disk so the table
+    // can be reactivated later without re-seeding.
+    return res.status(410).json({
+      error: ERROR_CODES.NOT_FOUND,
+      message: 'Member login is disabled. Use POST /api/auth/login with admin credentials.',
     })
   })
 

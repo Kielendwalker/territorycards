@@ -14,6 +14,10 @@ export const APP = Object.freeze({
   KDTU: 'kdtu',
   KDTU_ADMIN: 'kdtu-admin',
 })
+// Public surface flag — the kdtu member app is intentionally offline in
+// production deployments. Frontends read this at build time so they can
+// render a clear "member login disabled" notice instead of a stale form.
+export const MEMBER_LOGIN_ENABLED = false
 
 // ---- Domain enums ---------------------------------------------------------
 

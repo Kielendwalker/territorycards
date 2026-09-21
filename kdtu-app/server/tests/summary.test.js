@@ -343,9 +343,8 @@ beforeAll(async () => {
   }
 
   const { createApp } = await import('../src/index.js')
-  const { createSummaryRouter } = await import('../src/routes/summary.js')
   app = createApp({ db })
-  app.use('/api', createSummaryRouter())
+  // createApp() already mounts the summary router.
 
   const login = await request(app)
     .post('/api/auth/login')

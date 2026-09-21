@@ -15,7 +15,6 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createApp } from '../../src/index.js'
-import { createAuthRouter } from '../../src/routes/auth.js'
 import { createPenugasanRouter } from '../../src/routes/penugasan.js'
 import { openDb, closeDb } from '../../src/db/index.js'
 
@@ -27,6 +26,8 @@ process.env.KDTU_DB_KEY    = TEST_DB_KEY
 process.env.KDTU_FIELD_KEY = TEST_FIELD_KEY
 process.env.KDTU_JWT_SECRET = TEST_JWT
 process.env.NODE_ENV = 'test'
+// Lift the per-IP login rate ceiling so bursty tests don't trip it.
+process.env.KDTU_TEST_RATE_LIMIT_MAX = '1000'
 
 export async function buildPenugasanTestApp ({ admin } = {}) {
   const creds = admin || { username: 'admin', password: 'correct-horse-battery-staple', display_name: 'Admin' }
@@ -61,8 +62,7 @@ export async function buildPenugasanTestApp ({ admin } = {}) {
 
   // Build the same Express app as production, then mount the penugasan router.
   const app = createApp({ db })
-  app.use('/api/auth', createAuthRouter())
-  app.use('/api/penugasan', createPenugasanRouter())
+  // createApp() already mounts /api/auth and /api/penugasan, so nothing else to do.
 
   return { app, db, credentials: { admin: creds }, tmpFile, tmpDir: dir }
 }

@@ -7,6 +7,7 @@
 //   refresh_tokens(jti PK, user_id, role, token_hash UNIQUE,
 //                  expires_at, revoked_at, created_at)
 //   audit_log(id, actor, action, resource, details, created_at)
+//   files(id, name UNIQUE, kind, size_bytes, updated_at, created_at)
 //
 // Member names are stored as AES-GCM ciphertext via utils/crypto.js so that
 // `findMemberByName` can decrypt-match. When sub-agent F's openDb() lands,
@@ -25,11 +26,11 @@ import { createApp } from '../../src/index.js'
 import { ROLE } from '@kdtu/shared'
 import { encryptField, deriveKey } from '../../src/utils/crypto.js'
 
-const SCHEMA_TABLES = ['admins', 'members', 'refresh_tokens', 'audit_log']
+const SCHEMA_TABLES = ['admins', 'members', 'refresh_tokens', 'audit_log', 'files']
 
 function createMockDb () {
   const tables = Object.fromEntries(SCHEMA_TABLES.map(t => [t, []]))
-  const autoInc = { admins: 0, members: 0, audit_log: 0 }
+  const autoInc = { admins: 0, members: 0, audit_log: 0, files: 0 }
 
   function nextId (table) {
     if (!(table in autoInc)) throw new Error(`no autoinc for ${table}`)
@@ -75,6 +76,11 @@ function createMockDb () {
         if (/FROM\s+REFRESH_TOKENS/i.test(trimmed)) {
           if (/WHERE\s+TOKEN_HASH\s*=\s*\?/i.test(trimmed)) {
             return tables.refresh_tokens.find(r => r.token_hash === params[0])
+          }
+        }
+        if (/FROM\s+FILES/i.test(trimmed)) {
+          if (/WHERE\s+ID\s*=\s*\?/i.test(trimmed)) {
+            return tables.files.find(f => f.id === params[0])
           }
         }
         return undefined
@@ -127,6 +133,27 @@ function createMockDb () {
           })
           return { changes: 1, lastInsertRowid: id }
         }
+        if (upper.startsWith('INSERT INTO FILES')) {
+          // Two shapes:
+          //   (name, kind, size_bytes, updated_at)                                          — seed
+          //   (name, kind, size_bytes, updated_at) VALUES (...) ON CONFLICT(name) DO UPDATE — seed
+          const id = nextId('files')
+          const existing = tables.files.find(f => f.name === params[0])
+          if (existing) {
+            existing.kind = params[1]
+            existing.size_bytes = params[2]
+            existing.updated_at = params[3]
+            return { changes: 1 }
+          }
+          tables.files.push({
+            id,
+            name: params[0],
+            kind: params[1],
+            size_bytes: params[2],
+            updated_at: params[3],
+          })
+          return { changes: 1, lastInsertRowid: id }
+        }
         if (upper.startsWith('UPDATE REFRESH_TOKENS')) {
           let changes = 0
           if (/WHERE\s+JTI\s*=\s*\?/i.test(trimmed)) {
@@ -171,6 +198,14 @@ function createMockDb () {
         if (/FROM\s+ADMINS/i.test(trimmed) && /WHERE\s+ID\s*=\s*\?/i.test(trimmed)) {
           const r = tables.admins.filter(a => a.id === params[0])
           return r
+        }
+        if (/FROM\s+FILES/i.test(trimmed)) {
+          // Production route: SELECT id, name, kind, size_bytes, updated_at FROM files ORDER BY kind, name
+          // Mock returns a deterministic ordering by (kind, name) to match.
+          return [...tables.files].sort((a, b) => {
+            if (a.kind !== b.kind) return a.kind < b.kind ? -1 : 1
+            return a.name < b.name ? -1 : a.name > b.name ? 1 : 0
+          })
         }
         return []
       },
@@ -220,6 +255,15 @@ export async function buildTestApp ({ admin: adminRaw, member: memberRaw } = {})
   // >= 32 char field key is required by the encryption helpers for member name lookup.
   process.env.KDTU_FIELD_KEY  = 'test-field-key-test-field-key-test-field-AB'
   process.env.NODE_ENV = 'test'
+  // Lift the per-IP login rate ceiling so bursty tests don't trip it. The auth
+  // suite opts back in to the production value (5) for the dedicated
+  // rate-limit test.
+  // Only auto-lift the cap if a caller hasn't already pinned a specific value
+  // (e.g. the rate-limit test in tests/auth.test.js sets '5' explicitly so
+  // its 6th-call assertion still trips 429).
+  if (process.env.KDTU_TEST_RATE_LIMIT_MAX === undefined) {
+    process.env.KDTU_TEST_RATE_LIMIT_MAX = '1000'
+  }
 
   const db = createMockDb()
   const admin = normalizeAdmin(adminRaw)
