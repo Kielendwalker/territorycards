@@ -90,29 +90,79 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { http } from '../api/http.js'
+import { useAdminAuthStore } from '../stores/auth.js'
 
 // FilesView — admin-only listing of files in kdtu-data/.
 //
-// All requests carry the admin JWT (set by AuthStore as kdtu_session cookie +
-// Authorization header). The API uses opaque integer ids, so the only network
-// surface is /api/files (list) and /api/files/:id/{download,preview}.
+// All requests carry the admin JWT (read from the Pinia auth store and
+// attached as Authorization: Bearer by the http interceptor). The API uses
+// opaque integer ids, so the only network surface is /api/files (list) and
+// /api/files/:id/{download,preview}.
 //
 // Downloads use Content-Disposition: attachment so browsers offer a "Save as"
-// dialog. Previews stream inline at the route /api/files/:id/preview which
-// returns image/* with a short private cache.
+// dialog. Previews stream inline at /api/files/:id/preview. Because <img> and
+// <a download> cannot attach custom headers, we fetch each asset with the
+// bearer token via http.get({ responseType: 'blob' }) and stash a blob: URL —
+// the JWT never leaves the SPA and never appears in URLs / server logs.
+
+const auth = useAdminAuthStore()
+const router = useRouter()
+
+// Bounce unauthenticated callers back to /login. The http interceptor clears
+// the store on 401, so we only need to check the in-memory state here.
+if (!auth.isAuthenticated) {
+  router.replace({ path: '/', query: { next: '/files' } })
+}
+
 const files = ref([])
 const loading = ref(false)
 const error = ref('')
 const previewDialog = ref(null)
 const previewFile = ref(null)
+const previewSrc = ref('')
+const previewDownloadHref = ref('')
 
-const previewSrc = computed(() =>
-  previewFile.value ? `/api/files/${previewFile.value.id}/preview` : ''
-)
-const previewDownloadHref = computed(() =>
-  previewFile.value ? `/api/files/${previewFile.value.id}/download` : ''
-)
+// id -> { preview?: string, download?: string } — blob: URLs keyed by asset id
+// and kind, so opening preview then clicking download re-uses the same blob.
+const blobCache = ref({})
+
+async function blobFor (id, kind) {
+  const cached = blobCache.value[id]?.[kind]
+  if (cached) return cached
+  const res = await http.get(`/api/files/${id}/${kind}`, { responseType: 'blob' })
+  const url = URL.createObjectURL(res.data)
+  blobCache.value[id] = { ...(blobCache.value[id] || {}), [kind]: url }
+  return url
+}
+
+function revokeBlob (id) {
+  const entry = blobCache.value[id]
+  if (!entry) return
+  for (const url of Object.values(entry)) URL.revokeObjectURL(url)
+  delete blobCache.value[id]
+}
+
+// When previewFile changes, fetch both blob URLs and keep them until close.
+watch(previewFile, async (file) => {
+  previewSrc.value = ''
+  previewDownloadHref.value = ''
+  if (!file) return
+  try {
+    // Fetch both URLs in parallel so the dialog has the download link ready
+    // by the time the user clicks "Unduh salinan".
+    const [src, dl] = await Promise.all([
+      blobFor(file.id, 'preview'),
+      blobFor(file.id, 'download'),
+    ])
+    previewSrc.value = src
+    previewDownloadHref.value = dl
+  } catch (err) {
+    error.value = `Gagal memuat pratinjau: ${err?.response?.data?.message || err.message}`
+  }
+})
 
 const KIND_LABELS = {
   spreadsheet: 'Spreadsheet',
@@ -149,28 +199,24 @@ async function refresh () {
   loading.value = true
   error.value = ''
   try {
-    const res = await fetch('/api/files', { credentials: 'same-origin' })
-    if (!res.ok) {
-      // Surface the JSON envelope from the API.
-      const body = await res.json().catch(() => ({}))
-      throw new Error(body.message || `HTTP ${res.status}`)
-    }
-    const body = await res.json()
-    files.value = Array.isArray(body.files) ? body.files : []
+    // http.get sends Authorization from the Pinia store via the interceptor.
+    const { data } = await http.get('/api/files')
+    files.value = Array.isArray(data.files) ? data.files : []
   } catch (err) {
-    error.value = `Gagal memuat daftar berkas: ${err.message}`
+    const message = err?.response?.data?.message || err.message
+    error.value = `Gagal memuat daftar berkas: ${message}`
   } finally {
     loading.value = false
   }
 }
 
 async function download (file) {
-  // Use a hidden anchor with the `download` attribute so the browser uses the
-  // server-suggested filename from Content-Disposition. We MUST include
-  // credentials so the session cookie travels; the admin JWT alone is not
-  // enough because the cookie carries the refresh token + role hint.
+  // Fetch the blob (caches by id so a second click is instant) and trigger a
+  // download via a hidden anchor pointing at the blob: URL. Browsers honor
+  // the `download` attribute to pick a filename.
+  const url = await blobFor(file.id, 'download')
   const a = document.createElement('a')
-  a.href = `/api/files/${file.id}/download`
+  a.href = url
   a.rel = 'noopener'
   a.setAttribute('download', file.name)
   a.style.display = 'none'
@@ -196,7 +242,14 @@ function closePreview () {
 
 function onPreviewClose () {
   previewFile.value = null
+  previewSrc.value = ''
+  previewDownloadHref.value = ''
 }
+
+// Free every cached blob URL when the user navigates away.
+onBeforeUnmount(() => {
+  for (const id of Object.keys(blobCache.value)) revokeBlob(id)
+})
 
 onMounted(refresh)
 </script>

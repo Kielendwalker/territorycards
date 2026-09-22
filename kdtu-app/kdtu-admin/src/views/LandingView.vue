@@ -5,7 +5,7 @@
       <p class="subtitle">SIDANG SRENGSENG-3 — coordinator console</p>
     </header>
 
-    <section class="card">
+    <section v-if="!auth.isAuthenticated" class="card">
       <h2>Sign in</h2>
       <p class="muted">
         Default credentials come from <code>server/scripts/seed.js</code>:
@@ -15,16 +15,8 @@
         <code>POST /api/auth/change-password</code>; every protected route
         returns <code>403 PASSWORD_RESET_REQUIRED</code> until then.
       </p>
-      <p class="muted">
-        Halaman <router-link to="/files">/files</router-link> sudah tersedia —
-        menampilkan spreadsheet dan gambar HD dari folder
-        <code>kdtu-data/</code> di server. CRUD lengkap (KDL, members,
-        publications, summary, timetable) menyusul di PR berikutnya. API di
-        <a href="http://localhost:5180/api/health" target="_blank" rel="noreferrer">/api/health</a>
-        dapat dicek.
-      </p>
 
-      <form class="probe-form" @submit.prevent="probe">
+      <form class="probe-form" @submit.prevent="login">
         <label>
           username
           <input v-model="username" type="text" autocomplete="username" />
@@ -33,37 +25,82 @@
           password
           <input v-model="password" type="password" autocomplete="current-password" />
         </label>
-        <button class="primary" type="submit">Probe /api/auth/login</button>
+        <button class="primary" type="submit" :disabled="loading">
+          {{ loading ? 'Signing in…' : 'Sign in' }}
+        </button>
       </form>
-      <p v-if="result" class="result" :class="{ ok: ok, err: !ok }">{{ result }}</p>
+      <p v-if="result" class="result" :class="{ ok: ok, err: !ok }">
+        {{ result }}
+      </p>
+    </section>
+
+    <section v-else class="card">
+      <h2>Selamat datang, {{ auth.displayName }}</h2>
+      <p class="muted">
+        Anda masuk sebagai <code>{{ auth.user?.role || 'admin' }}</code>.
+        Buka halaman <router-link to="/files">/files</router-link> untuk
+        mengunduh spreadsheet &amp; gambar HD dari server.
+      </p>
+      <p v-if="auth.mustChangePassword" class="warning">
+        Anda masih menggunakan kata sandi bawaan. Rotasi sebelum 24 jam
+        pertama lewat (endpoint <code>POST /api/auth/change-password</code>).
+      </p>
+      <div class="actions">
+        <router-link class="primary" to="/files">Buka Berkas</router-link>
+        <button class="ghost" type="button" @click="logout">Keluar</button>
+      </div>
     </section>
   </main>
 </template>
 
 <script setup>
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { http } from '../api/http.js'
+import { useAdminAuthStore } from '../stores/auth.js'
+
+const auth = useAdminAuthStore()
+const router = useRouter()
 
 const result = ref('')
 const ok = ref(false)
+const loading = ref(false)
 const username = ref('koordinator_srengseng3')
 const password = ref('')
 
-async function probe () {
-  result.value = '…probing'
+async function login () {
+  result.value = ''
   ok.value = false
+  loading.value = true
   try {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ username: username.value, password: password.value }),
+    const { data } = await http.post('/api/auth/login', {
+      username: username.value,
+      password: password.value,
     })
-    const text = await res.text()
-    ok.value = res.ok
-    result.value = `${res.status} ${res.statusText} — ${text.slice(0, 200)}`
+    auth.setSession({
+      accessToken: data.accessToken,
+      refreshToken: data.refreshToken,
+      user: { name: data.user?.name || username.value, role: data.role },
+      mustChangePassword: Boolean(data.mustChangePassword),
+    })
+    ok.value = true
+    result.value = `Logged in as ${auth.displayName}.`
+    // Land on the Files page since that's the most useful next step.
+    router.push('/files')
   } catch (err) {
     ok.value = false
-    result.value = `network error: ${err.message}`
+    const message = err?.response?.data?.message || err.message
+    result.value = `${err?.response?.status || '??'} — ${message}`
+  } finally {
+    loading.value = false
   }
+}
+
+function logout () {
+  auth.clear()
+  result.value = ''
+  ok.value = false
+  password.value = ''
 }
 </script>
 
@@ -99,6 +136,15 @@ async function probe () {
   color: #475569;
   line-height: 1.55;
 }
+.warning {
+  margin: 0.75rem 0;
+  padding: 0.6rem 0.8rem;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  font-size: 0.88rem;
+}
 code {
   background: #f1f5f9;
   padding: 0 0.25rem;
@@ -113,8 +159,28 @@ code {
   border-radius: 8px;
   font-weight: 600;
   cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 0.95rem;
 }
 .primary:hover { background: #3730a3; }
+.primary:disabled { opacity: 0.6; cursor: progress; }
+.ghost {
+  background: transparent;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  padding: 0.55rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+.ghost:hover { background: #f1f5f9; }
+.actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-top: 1rem;
+}
 .result {
   margin-top: 1rem;
   padding: 0.6rem 0.8rem;
