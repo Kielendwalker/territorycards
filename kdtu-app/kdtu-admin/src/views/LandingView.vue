@@ -38,15 +38,22 @@
       <h2>Selamat datang, {{ auth.displayName }}</h2>
       <p class="muted">
         Anda masuk sebagai <code>{{ auth.user?.role || 'admin' }}</code>.
-        Buka halaman <router-link to="/files">/files</router-link> untuk
-        mengunduh spreadsheet &amp; gambar HD dari server.
+        Gunakan bilah navigasi di kiri untuk membuka:
       </p>
+      <ul class="link-list">
+        <li><router-link to="/timetable">Jadwal</router-link> — tambah/edit terbitan per periode (Oktober 2026 dst.)</li>
+        <li><router-link to="/publications">Katalog</router-link> — master data terbitan (Majalah, Risalah, …)</li>
+        <li><router-link to="/kdl">KDL</router-link> — kelompok pelayanan + anggota</li>
+        <li><router-link to="/penugasan">Penugasan</router-link> — item penugasan per KDL</li>
+        <li><router-link to="/summary">Ringkasan</router-link> — entri ringkasan bulanan</li>
+        <li><router-link to="/files">Berkas</router-link> — unduh spreadsheet &amp; gambar HD dari server</li>
+      </ul>
       <p v-if="auth.mustChangePassword" class="warning">
         Anda masih menggunakan kata sandi bawaan. Rotasi sebelum 24 jam
         pertama lewat (endpoint <code>POST /api/auth/change-password</code>).
       </p>
       <div class="actions">
-        <router-link class="primary" to="/files">Buka Berkas</router-link>
+        <router-link class="primary" to="/timetable">Buka Jadwal</router-link>
         <button class="ghost" type="button" @click="logout">Keluar</button>
       </div>
     </section>
@@ -56,7 +63,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { http } from '../api/http.js'
+import { api, ApiError } from '../api/index.js'
 import { useAdminAuthStore } from '../stores/auth.js'
 
 const auth = useAdminAuthStore()
@@ -73,7 +80,7 @@ async function login () {
   ok.value = false
   loading.value = true
   try {
-    const { data } = await http.post('/api/auth/login', {
+    const data = await api.post('/api/auth/login', {
       username: username.value,
       password: password.value,
     })
@@ -85,12 +92,11 @@ async function login () {
     })
     ok.value = true
     result.value = `Logged in as ${auth.displayName}.`
-    // Land on the Files page since that's the most useful next step.
-    router.push('/files')
+    router.push('/timetable')
   } catch (err) {
     ok.value = false
-    const message = err?.response?.data?.message || err.message
-    result.value = `${err?.response?.status || '??'} — ${message}`
+    const message = err instanceof ApiError ? err.message : err.message
+    result.value = `${err instanceof ApiError ? err.status : '??'} — ${message}`
   } finally {
     loading.value = false
   }
@@ -106,107 +112,55 @@ function logout () {
 
 <style scoped>
 .landing {
-  max-width: 640px;
+  max-width: 720px;
   margin: 4rem auto;
   padding: 0 1.5rem;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
-.hero h1 {
-  font-size: 2.25rem;
-  margin: 0 0 0.25rem;
-  color: #0f172a;
-}
-.subtitle {
-  color: #475569;
-  margin: 0 0 2rem;
-}
+.hero h1 { font-size: 2.25rem; margin: 0 0 0.25rem; color: #0f172a; }
+.subtitle { color: #475569; margin: 0 0 2rem; }
 .card {
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 1.5rem 1.75rem;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  background: white; border: 1px solid #e2e8f0; border-radius: 12px;
+  padding: 1.5rem 1.75rem; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
-.card h2 {
-  margin: 0 0 0.75rem;
-  font-size: 1.125rem;
-  color: #0f172a;
-}
-.muted {
-  color: #475569;
-  line-height: 1.55;
-}
+.card h2 { margin: 0 0 0.75rem; font-size: 1.125rem; color: #0f172a; }
+.muted { color: #475569; line-height: 1.55; }
 .warning {
-  margin: 0.75rem 0;
-  padding: 0.6rem 0.8rem;
-  background: #fef3c7;
-  color: #92400e;
-  border: 1px solid #fde68a;
-  border-radius: 6px;
+  margin: 0.75rem 0; padding: 0.6rem 0.8rem;
+  background: #fef3c7; color: #92400e; border: 1px solid #fde68a; border-radius: 6px;
   font-size: 0.88rem;
 }
+.link-list { padding-left: 1.2rem; line-height: 1.7; }
+.link-list a { color: #4338ca; font-weight: 500; }
+.link-list a:hover { text-decoration: underline; }
 code {
-  background: #f1f5f9;
-  padding: 0 0.25rem;
-  border-radius: 4px;
-  font-size: 0.9em;
+  background: #f1f5f9; padding: 0 0.25rem; border-radius: 4px; font-size: 0.9em;
 }
 .primary {
-  background: #4338ca;
-  color: white;
-  border: 0;
-  padding: 0.6rem 1.1rem;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-  text-decoration: none;
-  display: inline-block;
-  font-size: 0.95rem;
+  background: #4338ca; color: white; border: 0; padding: 0.6rem 1.1rem;
+  border-radius: 8px; font-weight: 600; cursor: pointer; text-decoration: none;
+  display: inline-block; font-size: 0.95rem;
 }
 .primary:hover { background: #3730a3; }
 .primary:disabled { opacity: 0.6; cursor: progress; }
 .ghost {
-  background: transparent;
-  color: #475569;
-  border: 1px solid #cbd5e1;
-  padding: 0.55rem 1rem;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 0.95rem;
+  background: transparent; color: #475569; border: 1px solid #cbd5e1;
+  padding: 0.55rem 1rem; border-radius: 8px; cursor: pointer; font-size: 0.95rem;
 }
 .ghost:hover { background: #f1f5f9; }
-.actions {
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
-  margin-top: 1rem;
-}
+.actions { display: flex; gap: 0.75rem; align-items: center; margin-top: 1rem; }
 .result {
-  margin-top: 1rem;
-  padding: 0.6rem 0.8rem;
-  border-radius: 6px;
+  margin-top: 1rem; padding: 0.6rem 0.8rem; border-radius: 6px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.85rem;
-  word-break: break-all;
+  font-size: 0.85rem; word-break: break-all;
 }
-.result.ok  { background: #ecfdf5; color: #065f46; }
+.result.ok { background: #ecfdf5; color: #065f46; }
 .result.err { background: #fef2f2; color: #991b1b; }
 .probe-form {
-  margin-top: 1rem;
-  display: grid;
-  gap: 0.6rem;
-  max-width: 360px;
+  margin-top: 1rem; display: grid; gap: 0.6rem; max-width: 360px;
 }
-.probe-form label {
-  display: grid;
-  gap: 0.25rem;
-  font-size: 0.85rem;
-  color: #475569;
-}
+.probe-form label { display: grid; gap: 0.25rem; font-size: 0.85rem; color: #475569; }
 .probe-form input {
-  padding: 0.5rem 0.6rem;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  font: inherit;
+  padding: 0.5rem 0.6rem; border: 1px solid #cbd5e1; border-radius: 6px; font: inherit;
 }
 </style>

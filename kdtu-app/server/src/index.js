@@ -9,6 +9,7 @@ import { audit, errorHandler } from './middleware/audit.js'
 import { createAuthRouter } from './routes/auth.js'
 import { createSummaryRouter } from './routes/summary.js'
 import { createKdlRouter } from './routes/kdl.js'
+import { createPeriodsRouter } from './routes/periods.js'
 import { createPenugasanRouter } from './routes/penugasan.js'
 import { createPublicationsRouter } from './routes/publications.js'
 import { createFilesRouter, scanKdtuDataDir } from './routes/files.js'
@@ -61,6 +62,7 @@ export function createApp ({ db = null } = {}) {
   app.use('/api', createSummaryRouter())
   // KDL (Kecil Daftar Layanan), penugasan, and publications are mounted on
   // their own prefixes so the route files can use bare paths.
+  app.use('/api/timetable/periods', createPeriodsRouter())
   app.use('/api/kdl', createKdlRouter())
   app.use('/api/penugasan', createPenugasanRouter())
   app.use('/api', createPublicationsRouter())
