@@ -1,23 +1,25 @@
 <template>
   <div class="app-shell">
     <aside class="sidebar">
-      <div class="brand">
-        <strong>KDTU</strong>
-        <span>Admin</span>
-      </div>
-      <nav>
-        <router-link to="/" exact-active-class="active">Beranda</router-link>
-        <router-link to="/timetable" active-class="active">Jadwal</router-link>
-        <router-link to="/publications" active-class="active">Katalog</router-link>
-        <router-link to="/kdl" active-class="active">KDL</router-link>
-        <router-link to="/penugasan" active-class="active">Penugasan</router-link>
-        <router-link to="/summary" active-class="active">Ringkasan</router-link>
-        <router-link to="/files" active-class="active">Berkas</router-link>
-      </nav>
-      <div v-if="auth.isAuthenticated" class="user">
-        <span>{{ auth.displayName }}</span>
-        <button class="ghost" type="button" @click="logout">Keluar</button>
-      </div>
+      <template v-if="auth.isAuthenticated">
+        <div class="brand">
+          <strong>KDTU</strong>
+          <span>Admin</span>
+        </div>
+        <nav>
+          <router-link to="/" exact-active-class="active">Beranda</router-link>
+          <router-link to="/timetable" active-class="active">Jadwal</router-link>
+          <router-link to="/publications" active-class="active">Katalog</router-link>
+          <router-link to="/kdl" active-class="active">KDL</router-link>
+          <router-link to="/penugasan" active-class="active">Penugasan</router-link>
+          <router-link to="/summary" active-class="active">Ringkasan</router-link>
+          <router-link to="/files" active-class="active">Berkas</router-link>
+        </nav>
+        <div class="user">
+          <span>{{ auth.displayName }}</span>
+          <button class="ghost" type="button" @click="logout">Keluar</button>
+        </div>
+      </template>
     </aside>
     <main class="main-area">
       <router-view />

@@ -52,11 +52,27 @@ function isNonEmptyString (s) {
   return typeof s === 'string' && s.trim().length > 0
 }
 
-function rowToEntry (row) {
+// Build a YYYY-MM -> human-readable period label cache (e.g.
+// "2026-09" -> "September 2026") so read responses can include both the
+// canonical token used for filtering and a localized label for display.
+const periodLabelByIsoCache = new WeakMap()
+function periodLabelByIso (db) {
+  if (!periodLabelByIsoCache.has(db)) {
+    const map = new Map()
+    for (const row of db.prepare('SELECT label, starts_on FROM timetable_periods').all()) {
+      if (row.starts_on) map.set(row.starts_on.slice(0, 7), row.label)
+    }
+    periodLabelByIsoCache.set(db, map)
+  }
+  return periodLabelByIsoCache.get(db)
+}
+
+function rowToEntry (db, row) {
   return {
     id: row.id,
     periodId: row.period_id,
     bulan: row.bulan,
+    bulanLabel: row.bulan ? (periodLabelByIso(db).get(row.bulan) || row.bulan) : null,
     location: row.location,
     sesi: row.sesi,
     category: row.category,
@@ -99,9 +115,11 @@ export function listSummaryByYear (db, year) {
      ORDER BY bulan ASC, location ASC, id ASC
   `).all(`${prefix}%`)
 
+  const labelByIso = periodLabelByIso(db)
   return {
     months: monthRows.map(r => ({
       month: r.bulan,
+      monthLabel: labelByIso.get(r.bulan) || r.bulan,
       majalah: r.majalah,
       risalah: r.risalah,
       buku: r.buku,
@@ -109,7 +127,7 @@ export function listSummaryByYear (db, year) {
       lainnya: r.lainnya,
       total: r.total,
     })),
-    entries: entryRows.map(rowToEntry),
+    entries: entryRows.map(r => rowToEntry(db, r)),
   }
 }
 
@@ -127,7 +145,7 @@ export function listSummaryByMonth (db, bulan) {
      WHERE bulan = ?
      ORDER BY location ASC, id ASC
   `).all(bulan)
-  return rows.map(rowToEntry)
+  return rows.map(r => rowToEntry(db, r))
 }
 
 // ---- Write side -----------------------------------------------------------
@@ -210,7 +228,7 @@ export function getEntry (db, id) {
       FROM kdtu_summary_entries WHERE id = ?
   `).get(id)
   if (!row) throw new NotFoundError(`Entry ${id} not found`)
-  return rowToEntry(row)
+  return rowToEntry(db, row)
 }
 
 export function updateEntry (db, id, patch) {

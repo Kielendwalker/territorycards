@@ -77,6 +77,35 @@ function cellText(row, idx) {
   return String(v).trim() || null
 }
 
+// Convert a localized "Bulan YYYY" label (e.g. "September 2026",
+// "September 2026 (on Progress)") into the YYYY-MM token the
+// kdtu_summary_entries schema and /api/summary/kdtu/:bulan API expect.
+// Falls back to the raw label when no month name matches so unknown
+// inputs are still preserved for debugging.
+const MONTH_NAME_TO_NUM = {
+  januari: 1, january: 1,
+  februari: 2, february: 2,
+  maret: 3, march: 3,
+  april: 4,
+  mei: 5, may: 5,
+  juni: 6, june: 6,
+  juli: 7, july: 7,
+  agustus: 8, august: 8,
+  september: 9,
+  oktober: 10, october: 10,
+  november: 11,
+  desember: 12, december: 12,
+}
+function monthLabelToIso (label) {
+  if (!label) return label
+  const m = String(label).toLowerCase().match(/^([a-zà-ÿ]+)\s+(\d{4})/)
+  if (!m) return label
+  const month = MONTH_NAME_TO_NUM[m[1]]
+  const year = m[2]
+  if (!month || !/^\d{4}$/.test(year)) return label
+  return `${year}-${String(month).padStart(2, '0')}`
+}
+
 async function seed() {
   if (!existsSync(TIMETABLE_XLSX)) throw new Error(`Missing xlsx: ${TIMETABLE_XLSX}`)
   if (!existsSync(RINGKASAN_XLSX)) throw new Error(`Missing xlsx: ${RINGKASAN_XLSX}`)
@@ -349,7 +378,13 @@ async function seed() {
 
     // Map bulan string -> period id (best effort)
     const periodId = periodIdByLabel.get(bulan) ?? null
-    insertSummary.run(periodId, bulan, location, sesi, category, cleanTitle, qty)
+    // The xlsx stores bulan as a localized label (e.g. "September 2026"); the
+    // kdtu_summary_entries schema and the /api/summary/kdtu/:bulan API expect
+    // a YYYY-MM token. Normalize here so the seed matches the contract the
+    // API enforces — otherwise every GET /api/summary/kdtu/2026-09 returns
+    // zero rows even when summary entries exist.
+    const iso = monthLabelToIso(bulan)
+    insertSummary.run(periodId, iso, location, sesi, category, cleanTitle, qty)
     summaryCount++
   }
 

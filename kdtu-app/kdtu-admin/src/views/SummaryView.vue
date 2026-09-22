@@ -35,7 +35,7 @@
       </thead>
       <tbody>
         <tr v-for="r in rows" :key="r.id">
-          <td>{{ r.bulan }}</td>
+          <td>{{ r.bulanLabel || r.bulan }}</td>
           <td>{{ r.location }}</td>
           <td>{{ r.sesi }}</td>
           <td><span class="badge" :class="`kind-${categorySlug(r.category)}`">{{ r.category }}</span></td>
