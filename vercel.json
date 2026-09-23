@@ -14,31 +14,23 @@
   // Headers: long-cache hashed assets, no-cache for index.html so deployments
   // take effect immediately.
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm --prefix kdtu-app run build",
-  "installCommand": "npm --prefix kdtu-app install --no-audit --no-fund",
+  "buildCommand": "npx vite build",
+  "installCommand": "npm install --no-audit --no-fund",
+  "outputDirectory": "dist",
   "framework": null,
   "trailingSlash": false,
-  "projects": [
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+  "headers": [
     {
-      "name": "kdtu-admin",
-      "root": "kdtu-app/kdtu-admin",
-      "buildCommand": "npx vite build",
-      "installCommand": "npm install --no-audit --no-fund",
-      "outputDirectory": "dist",
-      "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+      "source": "/assets/(.*)",
       "headers": [
-        {
-          "source": "/assets/(.*)",
-          "headers": [
-            { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
-          ]
-        },
-        {
-          "source": "/index.html",
-          "headers": [
-            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
-          ]
-        }
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/index.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
       ]
     }
   ],
