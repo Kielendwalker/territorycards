@@ -1,0 +1,307 @@
+/* ---------------------------------------------------------------------------
+ * kdtu — design system CSS variables
+ *
+ * Mirrors kdtu-app/shared/ui-tokens.js. JS code should import the tokens
+ * module for typed access; this file only declares the runtime values.
+ * ------------------------------------------------------------------------- */
+
+:root {
+  /* Brand */
+  --kdtu-color-primary: #4338ca;
+  --kdtu-color-primary-hover: #3730a3;
+  --kdtu-color-primary-soft: #eef2ff;
+  --kdtu-color-accent: #10b981;
+  --kdtu-color-accent-soft: #ecfdf5;
+
+  /* Neutrals */
+  --kdtu-color-ink: #0f172a;
+  --kdtu-color-ink-muted: #475569;
+  --kdtu-color-ink-subtle: #94a3b8;
+  --kdtu-color-surface: #ffffff;
+  --kdtu-color-surface-alt: #f8fafc;
+  --kdtu-color-surface-sunken: #f1f5f9;
+  --kdtu-color-border: #e2e8f0;
+  --kdtu-color-border-strong: #cbd5e1;
+
+  /* Status */
+  --kdtu-color-success: #16a34a;
+  --kdtu-color-warning: #f59e0b;
+  --kdtu-color-danger: #dc2626;
+  --kdtu-color-danger-soft: #fef2f2;
+
+  /* kdtu warmer tint */
+  --kdtu-color-background: #fffbeb;
+  --kdtu-tint-soft: #fef3c7;
+  --kdtu-tint-accent: #0d9488;
+
+  /* Typography */
+  --kdtu-font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --kdtu-font-family-mono: ui-monospace, SFMono-Regular, "JetBrains Mono",
+    Menlo, Consolas, monospace;
+  --kdtu-font-size-xs: 12px;
+  --kdtu-font-size-sm: 13px;
+  --kdtu-font-size-base: 14px;
+  --kdtu-font-size-md: 15px;
+  --kdtu-font-size-lg: 17px;
+  --kdtu-font-size-xl: 20px;
+  --kdtu-font-size-2xl: 24px;
+  --kdtu-font-size-3xl: 30px;
+
+  /* Spacing scale (in rem-like px) */
+  --kdtu-space-1: 4px;
+  --kdtu-space-2: 8px;
+  --kdtu-space-3: 12px;
+  --kdtu-space-4: 16px;
+  --kdtu-space-5: 20px;
+  --kdtu-space-6: 24px;
+  --kdtu-space-8: 32px;
+  --kdtu-space-10: 40px;
+  --kdtu-space-12: 48px;
+  --kdtu-space-16: 64px;
+
+  /* Radii */
+  --kdtu-radius-sm: 4px;
+  --kdtu-radius-md: 6px;
+  --kdtu-radius-lg: 10px;
+  --kdtu-radius-xl: 14px;
+  --kdtu-radius-pill: 999px;
+
+  /* Shadow */
+  --kdtu-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --kdtu-shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --kdtu-shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.16);
+  --kdtu-shadow-focus: 0 0 0 3px rgba(67, 56, 202, 0.35);
+
+  /* Z-index */
+  --kdtu-z-base: 0;
+  --kdtu-z-sticky: 10;
+  --kdtu-z-sidebar: 20;
+  --kdtu-z-topbar: 30;
+  --kdtu-z-drawer: 40;
+  --kdtu-z-toast: 80;
+  --kdtu-z-modal: 90;
+
+  /* Motion */
+  --kdtu-motion-fast: 120ms ease-out;
+  --kdtu-motion-base: 180ms ease-out;
+  --kdtu-motion-slow: 280ms ease-out;
+}
+
+/* ---------------------------------------------------------------------------
+ * Resets + base typography
+ * ------------------------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background: var(--kdtu-color-background);
+  color: var(--kdtu-color-ink);
+  font-family: var(--kdtu-font-family);
+  font-size: var(--kdtu-font-size-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--kdtu-color-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--kdtu-color-primary-hover);
+  text-decoration: underline;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0 0 var(--kdtu-space-3);
+  color: var(--kdtu-color-ink);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+h1 {
+  font-size: var(--kdtu-font-size-3xl);
+}
+h2 {
+  font-size: var(--kdtu-font-size-2xl);
+}
+h3 {
+  font-size: var(--kdtu-font-size-xl);
+}
+h4 {
+  font-size: var(--kdtu-font-size-lg);
+}
+
+p {
+  margin: 0 0 var(--kdtu-space-3);
+}
+
+/* ---------------------------------------------------------------------------
+ * Buttons
+ * ------------------------------------------------------------------------- */
+.kdtu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--kdtu-space-2);
+  padding: var(--kdtu-space-2) var(--kdtu-space-4);
+  border-radius: var(--kdtu-radius-md);
+  border: 1px solid transparent;
+  background: var(--kdtu-color-surface);
+  color: var(--kdtu-color-ink);
+  font-size: var(--kdtu-font-size-base);
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background var(--kdtu-motion-fast),
+    border-color var(--kdtu-motion-fast), color var(--kdtu-motion-fast),
+    box-shadow var(--kdtu-motion-fast);
+}
+
+.kdtu-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--kdtu-shadow-focus);
+}
+
+.kdtu-btn:disabled,
+.kdtu-btn[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.kdtu-btn--primary {
+  background: var(--kdtu-color-primary);
+  color: #fff;
+}
+.kdtu-btn--primary:hover:not(:disabled) {
+  background: var(--kdtu-color-primary-hover);
+}
+
+.kdtu-btn--ghost {
+  background: transparent;
+  border-color: var(--kdtu-color-border);
+}
+.kdtu-btn--ghost:hover:not(:disabled) {
+  background: var(--kdtu-color-surface-alt);
+}
+
+.kdtu-btn--danger {
+  background: var(--kdtu-color-danger);
+  color: #fff;
+}
+.kdtu-btn--danger:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.kdtu-btn--sm {
+  padding: var(--kdtu-space-1) var(--kdtu-space-3);
+  font-size: var(--kdtu-font-size-sm);
+}
+
+.kdtu-btn--block {
+  width: 100%;
+}
+
+/* ---------------------------------------------------------------------------
+ * Cards / panels
+ * ------------------------------------------------------------------------- */
+.kdtu-card {
+  background: var(--kdtu-color-surface);
+  border: 1px solid var(--kdtu-color-border);
+  border-radius: var(--kdtu-radius-lg);
+  box-shadow: var(--kdtu-shadow-sm);
+}
+
+.kdtu-card__header {
+  padding: var(--kdtu-space-4) var(--kdtu-space-5);
+  border-bottom: 1px solid var(--kdtu-color-border);
+  font-weight: 600;
+}
+
+.kdtu-card__body {
+  padding: var(--kdtu-space-5);
+}
+
+/* ---------------------------------------------------------------------------
+ * Form field defaults (FormField.vue uses these tokens but the inputs also
+ * look right when used standalone).
+ * ------------------------------------------------------------------------- */
+.kdtu-input,
+.kdtu-select,
+.kdtu-textarea {
+  display: block;
+  width: 100%;
+  padding: var(--kdtu-space-2) var(--kdtu-space-3);
+  background: var(--kdtu-color-surface);
+  color: var(--kdtu-color-ink);
+  border: 1px solid var(--kdtu-color-border-strong);
+  border-radius: var(--kdtu-radius-md);
+  font-size: var(--kdtu-font-size-base);
+  transition: border-color var(--kdtu-motion-fast),
+    box-shadow var(--kdtu-motion-fast);
+}
+
+.kdtu-input:focus,
+.kdtu-select:focus,
+.kdtu-textarea:focus {
+  outline: none;
+  border-color: var(--kdtu-color-primary);
+  box-shadow: var(--kdtu-shadow-focus);
+}
+
+.kdtu-input::placeholder,
+.kdtu-textarea::placeholder {
+  color: var(--kdtu-color-ink-subtle);
+}
+
+/* ---------------------------------------------------------------------------
+ * Utility helpers (used sparingly)
+ * ------------------------------------------------------------------------- */
+.kdtu-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kdtu-space-3);
+}
+
+.kdtu-row {
+  display: flex;
+  align-items: center;
+  gap: var(--kdtu-space-3);
+}
+
+.kdtu-muted {
+  color: var(--kdtu-color-ink-muted);
+}
+
+.kdtu-text-danger {
+  color: var(--kdtu-color-danger);
+}
+
+.kdtu-text-success {
+  color: var(--kdtu-color-success);
+}
