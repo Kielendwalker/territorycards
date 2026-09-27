@@ -1,15 +1,23 @@
 // Tiny axios instance shared across kdtu-admin.
 //
-// All requests hit /api/* which the Vite dev server (and Vercel in
-// production) proxies to the Express server. The Authorization header is
-// attached from the Pinia auth store; on 401 we clear the store so the router
-// guard can bounce the caller to /login.
+// All requests hit the configured API origin. In dev, Vite proxies /api/*
+// to localhost:5180 (see vite.config.js); in production, the SPA is hosted
+// on Vercel and calls the Render-hosted Express API directly via the
+// VITE_API_BASE_URL env var baked in at build time. The Authorization
+// header is attached from the Pinia auth store; on 401 we clear the store
+// so the router guard can bounce the caller to /login.
 
 import axios from 'axios'
 import { useAdminAuthStore } from '../stores/auth.js'
 
+// In dev (no env var) keep /api/* so the Vite proxy forwards to the local
+// Express server. In production set VITE_API_BASE_URL to the full origin
+// of the Render API, e.g. https://kdtu-api.onrender.com — DO NOT include a
+// trailing /api, axios will append it from the request URLs.
+const baseURL = import.meta.env.VITE_API_BASE_URL || '/'
+
 export const http = axios.create({
-  baseURL: '/',
+  baseURL,
   // The Express API uses an httpOnly cookie for refresh tokens in addition
   // to the bearer access token. We must send cookies so /api/auth/refresh can
   // rotate them on first request.
