@@ -1,0 +1,284 @@
+// Test helper: build an in-memory JS DB mock + Express app.
+//
+// The mock mirrors what production needs from server/src/db/schema.sql for the
+// auth surface:
+//   admins(id, username UNIQUE, password_hash, display_name, must_change_password)
+//   members(id, name_enc BLOB, pin_hash, active)
+//   refresh_tokens(jti PK, user_id, role, token_hash UNIQUE,
+//                  expires_at, revoked_at, created_at)
+//   audit_log(id, actor, action, resource, details, created_at)
+//   files(id, name UNIQUE, kind, size_bytes, updated_at, created_at)
+//
+// Member names are stored as AES-GCM ciphertext via utils/crypto.js so that
+// `findMemberByName` can decrypt-match. When sub-agent F's openDb() lands,
+// tests can swap in the real handle and drop this helper.
+//
+// Signature: buildTestApp({ admin?: {...}, member?: {...} })
+//
+// Accepts both legacy and modern shapes for backward compatibility:
+//   admin:  { name, password }                       (legacy — `name` doubles as username/display_name)
+//   admin:  { username, password, display_name?, must_change_password? }  (modern)
+//   member: { name, pin }                            (legacy — `name` is the plaintext name)
+//   member: { name, pin }                            (modern — same as legacy)
+
+import argon2 from 'argon2'
+import { createApp } from '../../src/index.js'
+import { ROLE } from '@kdtu/shared'
+import { encryptField, deriveKey } from '../../src/utils/crypto.js'
+
+const SCHEMA_TABLES = ['admins', 'members', 'refresh_tokens', 'audit_log', 'files']
+
+function createMockDb () {
+  const tables = Object.fromEntries(SCHEMA_TABLES.map(t => [t, []]))
+  const autoInc = { admins: 0, members: 0, audit_log: 0, files: 0 }
+
+  function nextId (table) {
+    if (!(table in autoInc)) throw new Error(`no autoinc for ${table}`)
+    autoInc[table] += 1
+    return autoInc[table]
+  }
+
+  function exec (_sql) {
+    // No-op for CREATE statements. Mock starts with empty tables.
+  }
+
+  function prepare (sql) {
+    const trimmed = sql.trim()
+    const upper = trimmed.toUpperCase()
+
+    return {
+      get (...params) {
+        if (this.all && arguments.length === 0) {
+          // disambiguate: never used, but keeps callers safe
+        }
+        return this._get(...params)
+      },
+      all (...params) {
+        return this._all(...params)
+      },
+      _get (...params) {
+        if (/FROM\s+ADMINS/i.test(trimmed)) {
+          if (/WHERE\s+USERNAME\s*=\s*\?/i.test(trimmed)) {
+            return tables.admins.find(a => a.username === params[0])
+          }
+          if (/WHERE\s+ID\s*=\s*\?/i.test(trimmed)) {
+            return tables.admins.find(a => a.id === params[0])
+          }
+        }
+        if (/FROM\s+MEMBERS/i.test(trimmed)) {
+          if (/WHERE\s+ID\s*=\s*\?/i.test(trimmed)) {
+            return tables.members.find(m => m.id === params[0])
+          }
+          if (/WHERE\s+ACTIVE\s*=\s*1/i.test(trimmed)) {
+            return tables.members.filter(m => m.active === 1)
+          }
+        }
+        if (/FROM\s+REFRESH_TOKENS/i.test(trimmed)) {
+          if (/WHERE\s+TOKEN_HASH\s*=\s*\?/i.test(trimmed)) {
+            return tables.refresh_tokens.find(r => r.token_hash === params[0])
+          }
+        }
+        if (/FROM\s+FILES/i.test(trimmed)) {
+          if (/WHERE\s+ID\s*=\s*\?/i.test(trimmed)) {
+            return tables.files.find(f => f.id === params[0])
+          }
+        }
+        return undefined
+      },
+      run (...params) {
+        return this._run(...params)
+      },
+      _run (...params) {
+        if (upper.startsWith('INSERT INTO ADMINS')) {
+          const id = nextId('admins')
+          // Two shapes are supported:
+          //   (username, password_hash, display_name)                       — 3 args
+          //   (username, password_hash, display_name, must_change_password) — 4 args
+          const mustChange = params.length >= 4 ? (params[3] === 1 || params[3] === true ? 1 : 0) : 0
+          tables.admins.push({
+            id,
+            username: params[0],
+            password_hash: params[1],
+            display_name: params[2],
+            must_change_password: mustChange,
+          })
+          return { changes: 1, lastInsertRowid: id }
+        }
+        if (upper.startsWith('INSERT INTO MEMBERS')) {
+          const id = nextId('members')
+          tables.members.push({
+            id,
+            name_enc: params[0],
+            pin_hash: params[1],
+            active: params[2] === undefined ? 1 : params[2],
+          })
+          return { changes: 1, lastInsertRowid: id }
+        }
+        if (upper.startsWith('INSERT INTO REFRESH_TOKENS')) {
+          tables.refresh_tokens.push({
+            jti: params[0],
+            user_id: params[1],
+            role: params[2],
+            token_hash: params[3],
+            expires_at: params[4],
+            revoked_at: null,
+          })
+          return { changes: 1 }
+        }
+        if (upper.startsWith('INSERT INTO AUDIT_LOG')) {
+          const id = nextId('audit_log')
+          tables.audit_log.push({
+            id, actor: params[0], action: params[1], resource: params[2],
+            details: params[3], created_at: params[4],
+          })
+          return { changes: 1, lastInsertRowid: id }
+        }
+        if (upper.startsWith('INSERT INTO FILES')) {
+          // Two shapes:
+          //   (name, kind, size_bytes, updated_at)                                          — seed
+          //   (name, kind, size_bytes, updated_at) VALUES (...) ON CONFLICT(name) DO UPDATE — seed
+          const id = nextId('files')
+          const existing = tables.files.find(f => f.name === params[0])
+          if (existing) {
+            existing.kind = params[1]
+            existing.size_bytes = params[2]
+            existing.updated_at = params[3]
+            return { changes: 1 }
+          }
+          tables.files.push({
+            id,
+            name: params[0],
+            kind: params[1],
+            size_bytes: params[2],
+            updated_at: params[3],
+          })
+          return { changes: 1, lastInsertRowid: id }
+        }
+        if (upper.startsWith('UPDATE REFRESH_TOKENS')) {
+          let changes = 0
+          if (/WHERE\s+JTI\s*=\s*\?/i.test(trimmed)) {
+            const jti = params[1], ts = params[0]
+            for (const r of tables.refresh_tokens) if (r.jti === jti && !r.revoked_at) { r.revoked_at = ts; changes += 1 }
+          } else if (/WHERE\s+TOKEN_HASH\s*=\s*\?/i.test(trimmed)) {
+            const h = params[1], ts = params[0]
+            for (const r of tables.refresh_tokens) if (r.token_hash === h && !r.revoked_at) { r.revoked_at = ts; changes += 1 }
+          } else if (/WHERE\s+USER_ID\s*=\s*\?/i.test(trimmed)) {
+            const uid = params[1], ts = params[0]
+            for (const r of tables.refresh_tokens) if (r.user_id === uid && !r.revoked_at) { r.revoked_at = ts; changes += 1 }
+          }
+          return { changes }
+        }
+        if (upper.startsWith('UPDATE ADMINS')) {
+          // Update forms seen in production:
+          // SQLCipher better-sqlite3 binds only ? placeholders, not literals,
+          // so MUST_CHANGE_PASSWORD = 0 is a literal in the SQL. The two
+          // production UPDATE ADMINS shapes are therefore 2-arg:
+          //   SET password_hash = ? WHERE id = ?                             — params: [hash, id]
+          //   SET password_hash = ?, must_change_password = 0 WHERE id = ?   — params: [hash, id]
+          if (/MUST_CHANGE_PASSWORD/i.test(trimmed)) {
+            const id = params[1]
+            const newHash = params[0]
+            for (const a of tables.admins) if (a.id === id) {
+              a.password_hash = newHash
+              a.must_change_password = 0
+              return { changes: 1 }
+            }
+            return { changes: 0 }
+          }
+          const id = params[1], h = params[0]
+          for (const a of tables.admins) if (a.id === id) { a.password_hash = h; return { changes: 1 } }
+          return { changes: 0 }
+        }
+        throw new Error(`mock db: unhandled run(): ${trimmed}`)
+      },
+      _all (...params) {
+        if (/FROM\s+MEMBERS/i.test(trimmed) && /WHERE\s+ACTIVE\s*=\s*1/i.test(trimmed)) {
+          return tables.members.filter(m => m.active === 1)
+        }
+        if (/FROM\s+ADMINS/i.test(trimmed) && /WHERE\s+ID\s*=\s*\?/i.test(trimmed)) {
+          const r = tables.admins.filter(a => a.id === params[0])
+          return r
+        }
+        if (/FROM\s+FILES/i.test(trimmed)) {
+          // Production route: SELECT id, name, kind, size_bytes, updated_at FROM files ORDER BY kind, name
+          // Mock returns a deterministic ordering by (kind, name) to match.
+          return [...tables.files].sort((a, b) => {
+            if (a.kind !== b.kind) return a.kind < b.kind ? -1 : 1
+            return a.name < b.name ? -1 : a.name > b.name ? 1 : 0
+          })
+        }
+        return []
+      },
+    }
+  }
+
+  function transaction (fn) {
+    return (...args) => fn(...args)
+  }
+  function close () {}
+  function pragma () {}
+
+  return { prepare, exec, transaction, close, pragma, _tables: tables }
+}
+
+function normalizeAdmin (raw) {
+  // Accept either { name, password } (legacy) or { username, password, display_name, must_change_password }
+  // (modern). Falls back to a known-good default if `raw` is missing.
+  if (!raw) {
+    return {
+      username: 'admin',
+      password: 'correct-horse-battery-staple',
+      display_name: 'admin',
+      must_change_password: 0,
+    }
+  }
+  const username = raw.username ?? raw.name
+  if (!username) throw new Error('buildTestApp: admin must have `username` (or legacy `name`)')
+  if (!raw.password) throw new Error('buildTestApp: admin must have `password`')
+  return {
+    username,
+    password: raw.password,
+    display_name: raw.display_name ?? raw.name ?? username,
+    must_change_password: raw.must_change_password ?? 0,
+  }
+}
+
+function normalizeMember (raw) {
+  if (!raw) return { name: 'Alice', pin: '1234' }
+  if (!raw.name) throw new Error('buildTestApp: member must have `name`')
+  if (!raw.pin) throw new Error('buildTestApp: member must have `pin`')
+  return { name: raw.name, pin: raw.pin }
+}
+
+export async function buildTestApp ({ admin: adminRaw, member: memberRaw } = {}) {
+  process.env.KDTU_JWT_SECRET = 'test-secret-test-secret-test-secret-1234'
+  // >= 32 char field key is required by the encryption helpers for member name lookup.
+  process.env.KDTU_FIELD_KEY  = 'test-field-key-test-field-key-test-field-AB'
+  process.env.NODE_ENV = 'test'
+  // Lift the per-IP login rate ceiling so bursty tests don't trip it. The auth
+  // suite opts back in to the production value (5) for the dedicated
+  // rate-limit test.
+  // Only auto-lift the cap if a caller hasn't already pinned a specific value
+  // (e.g. the rate-limit test in tests/auth.test.js sets '5' explicitly so
+  // its 6th-call assertion still trips 429).
+  if (process.env.KDTU_TEST_RATE_LIMIT_MAX === undefined) {
+    process.env.KDTU_TEST_RATE_LIMIT_MAX = '1000'
+  }
+
+  const db = createMockDb()
+  const admin = normalizeAdmin(adminRaw)
+  const member = normalizeMember(memberRaw)
+
+  const fieldKey = deriveKey(process.env.KDTU_FIELD_KEY)
+  const adminHash = await argon2.hash(admin.password, { type: argon2.argon2id })
+  const memberPinHash = await argon2.hash(member.pin, { type: argon2.argon2id })
+  const memberNameEnc = encryptField(member.name, fieldKey)
+
+  db.prepare(
+    'INSERT INTO admins (username, password_hash, display_name, must_change_password) VALUES (?, ?, ?, ?)'
+  ).run(admin.username, adminHash, admin.display_name, admin.must_change_password ?? 0)
+  db.prepare('INSERT INTO members (name_enc, pin_hash) VALUES (?, ?)').run(memberNameEnc, memberPinHash)
+
+  const app = createApp({ db })
+  return { app, db, credentials: { admin, member } }
+}

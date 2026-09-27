@@ -1,0 +1,27 @@
+{
+  "name": "@kdtu/kdtu-admin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5182 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview --port 5182 --strictPort",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@kdtu/shared": "*",
+    "axios": "^1.7.9",
+    "chart.js": "^4.4.6",
+    "pinia": "^2.3.0",
+    "vue": "^3.4.0",
+    "vue-router": "^4.4.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "@vue/test-utils": "^2.4.6",
+    "happy-dom": "^15.11.7",
+    "vite": "^6.4.3",
+    "vitest": "^2.1.9"
+  }
+}
